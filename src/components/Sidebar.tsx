@@ -26,6 +26,7 @@ const LotAndConcessionTool = lazy(() => import("@/components/tools/LotAndConcess
 const ExternalServicesTool = lazy(() => import("@/components/tools/ExternalServices/ExternalServicesTool"));
 const AddLayerTool = lazy(() => import("@/components/tools/AddLayer/AddLayerTool"));
 const AvailableMapsTool = lazy(() => import("@/components/tools/AvailableMaps/AvailableMapsTool"));
+const LHRSTool = lazy(() => import("@/components/tools/LHRS/LHRSTool"));
 
 // Secure Road Closures tool
 const RoadClosuresTool = lazy(() =>
@@ -77,6 +78,7 @@ const toolComponents: Record<
   ExternalServices: ExternalServicesTool,
   AddLayer: AddLayerTool,
   AvailableMaps: AvailableMapsTool,
+  LHRS: LHRSTool,
 };
 
 // Theme mapping for dynamic loading

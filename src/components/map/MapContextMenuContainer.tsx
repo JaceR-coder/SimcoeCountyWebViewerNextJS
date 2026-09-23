@@ -11,7 +11,7 @@ import { LayerManager } from "@/utils/openlayers/LayerManager";
 import { useInteractionManager } from "@/components/map/MapContainer";
 import { useAppStore } from "@/stores/appStore";
 import { toLonLat } from "ol/proj";
-import { FaFileAlt, FaMapMarkerAlt, FaExclamationTriangle, FaInfoCircle, FaGoogle, FaEllipsisH, FaCompressArrowsAlt } from "react-icons/fa";
+import { FaFileAlt, FaMapMarkerAlt, FaExclamationTriangle, FaInfoCircle, FaGoogle, FaEllipsisH, FaCompressArrowsAlt, FaRoad } from "react-icons/fa";
 import { FaMapLocationDot } from "react-icons/fa6";
 import { Vector as VectorLayer } from "ol/layer";
 import { getPublicPath } from "@/utils/getPublicPath";
@@ -149,6 +149,13 @@ export const MapContextMenuContainer: React.FC = () => {
   }, [map, setReport, openSidebar, setActiveTabByName]);
 
 
+  // Open the LHRS tool with the clicked location pre-loaded as Point A
+  const lhrsTool = useSidebarStore((s) => s.tools?.find((t) => (t.component || t.name) === "LHRS" && t.enabled !== false));
+  const handleLHRS = useCallback(() => {
+    if (!lhrsTool) return;
+    useSidebarStore.getState().requestActivateSidebarItem(lhrsTool.name, "tools", { coordinate: coordinateRef.current });
+  }, [lhrsTool]);
+
   const handleGoogleMaps = useCallback(() => {
     const lonLat = toLonLat(coordinateRef.current);
     const url = `https://www.google.com/maps?q=${lonLat[1]},${lonLat[0]}`;
@@ -221,6 +228,13 @@ export const MapContextMenuContainer: React.FC = () => {
         onClick: handleIdentify,
       },
       {
+        id: "sc-floating-menu-lhrs",
+        label: "LHRS",
+        icon: <FaRoad />,
+        visible: !!lhrsTool && visibility["sc-floating-menu-lhrs"] === true,
+        onClick: handleLHRS,
+      },
+      {
         id: "sc-floating-menu-google-maps",
         label: "View in Google Maps",
         icon: <FaGoogle />,
@@ -242,7 +256,7 @@ export const MapContextMenuContainer: React.FC = () => {
         onClick: handleMore,
       },
     ];
-  }, [config, handlePropertyReport, handleAddMarker, handleReportProblem, handleIdentify, handleGoogleMaps, handleSaveMapExtent, handleMore, handleSwitchToBasic]);
+  }, [config, handlePropertyReport, handleAddMarker, handleReportProblem, handleIdentify, handleLHRS, lhrsTool, handleGoogleMaps, handleSaveMapExtent, handleMore, handleSwitchToBasic]);
 
   // Handle context menu display
   const handleContextMenu = useCallback(

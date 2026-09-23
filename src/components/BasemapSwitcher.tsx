@@ -47,6 +47,7 @@ interface ImageryService {
 
 interface BasemapConfig {
   defaultButton: string;
+  defaultTopoServiceName?: string;
   topoServices: BasemapService[];
   imageryServices: ImageryService[];
   worldImageryService?: string;
@@ -202,7 +203,8 @@ export default function BasemapSwitcher() {
 
         // Initialize selected topo service
         if (data.topoServices && data.topoServices.length > 0) {
-          const defaultService = data.topoServices.find((service) => service.name === "Topographic") || data.topoServices[0];
+          const defaultService =
+            data.topoServices.find((service) => service.name === (data.defaultTopoServiceName || "Topographic")) || data.topoServices[0];
           setSelectedTopoService(defaultService);
         }
 
@@ -565,7 +567,8 @@ export default function BasemapSwitcher() {
       // Always load the topo basemap layers (needed for switching later).
       // Await so layers are fully created before we toggle visibility.
       if (config.topoServices && config.topoServices.length > 0) {
-        const defaultService = config.topoServices.find((service) => service.name === "Topographic") || config.topoServices[0];
+        const defaultService =
+          config.topoServices.find((service) => service.name === (config.defaultTopoServiceName || "Topographic")) || config.topoServices[0];
         await applyBasemap(defaultService);
       }
 

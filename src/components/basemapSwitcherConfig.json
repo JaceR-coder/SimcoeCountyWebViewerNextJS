@@ -140,8 +140,15 @@
           "type": "OSM"
         }
       ]
+    },
+    {
+      "name": "None",
+      "image": "none.png",
+      "index": 5,
+      "layers": []
     }
   ],
+  "defaultTopoServiceName": "None",
   "imageryServices": [
     {
       "url": "https://maps.simcoe.ca/arcgis/rest/services/Public/Ortho_1954_Cache/MapServer/tile/{z}/{y}/{x}",

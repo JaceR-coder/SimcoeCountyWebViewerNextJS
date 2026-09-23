@@ -6,8 +6,8 @@
   "favicon": "simcoe_favicon.ico",
   "originUrl": "https://opengis.simcoe.ca",
   "feedbackUrl": "https://opengis.simcoe.ca/feedback",
-  "geoserverUrl": "https://opengis2.simcoe.ca/geoserver/",
-  "publicUrl": "https://opengis.simcoe.ca/public/",
+  "geoserverUrl": "https://ops-mz0075jf.cihs.ad.gov.on.ca/geomatics/imap/geoserver/",
+  "publicUrl": "https://ops-mz0075jf.cihs.ad.gov.on.ca/geomatics/imap/geoserver/",
   "geoserverPath": "geoserver",
   "printUrl": "https://opengis.simcoe.ca/print",
   "includeAppStats": true,
@@ -32,7 +32,7 @@
   "propertyReportUrl": "/ublic/reports/property/",
   "weatherRadarApiUrl": "",
   "parcelLayer": {
-    "url": "https://opengis.simcoe.ca/geoserver/wfs?service=wfs&version=2.0.0&request=GetFeature&typeNames=simcoe:Assessment%20Parcel&outputFormat=application/json",
+    "url": "https://ops-mz0075jf.cihs.ad.gov.on.ca/geomatics/imap/geoserver/wfs?service=wfs&version=2.0.0&request=GetFeature&typeNames=simcoe:Assessment%20Parcel&outputFormat=application/json",
     "rollNumberFieldName": "ARN"
   },
   "gitHubFollowUrl": "https://github.com/county-of-simcoe-gis",
@@ -117,7 +117,7 @@
             "simcoe:Assessment Parcel"
           ]
         },
-        "layerUrl": "https://opengis.simcoe.ca/geoserver/simcoe/Popular/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "layerUrl": "https://ops-mz0075jf.cihs.ad.gov.on.ca/geomatics/imap/geoserver/simcoe/Popular/ows?service=wms&version=1.3.0&request=GetCapabilities",
         "secure": false,
         "primary": false,
         "urlType": "root",
@@ -129,7 +129,7 @@
           "displayName": "Historical",
           "visibleLayers": []
         },
-        "layerUrl": "https://opengis.simcoe.ca/geoserver/simcoe/Historical/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "layerUrl": "https://ops-mz0075jf.cihs.ad.gov.on.ca/geomatics/imap/geoserver/simcoe/Historical/ows?service=wms&version=1.3.0&request=GetCapabilities",
         "secure": false,
         "primary": false,
         "urlType": "root",
@@ -143,7 +143,7 @@
             "simcoe:Assessment Parcel"
           ]
         },
-        "layerUrl": "https://opengis.simcoe.ca/geoserver/simcoe/All_Layers_Public/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "layerUrl": "https://ops-mz0075jf.cihs.ad.gov.on.ca/geomatics/imap/geoserver/simcoe/All_Layers_Public/ows?service=wms&version=1.3.0&request=GetCapabilities",
         "secure": false,
         "primary": true,
         "urlType": "root",
@@ -155,7 +155,7 @@
           "displayName": "Topo Overlay",
           "visibleLayers": []
         },
-        "layerUrl": "https://opengis.simcoe.ca/geoserver/simcoe/Topo_Overlay/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "layerUrl": "https://ops-mz0075jf.cihs.ad.gov.on.ca/geomatics/imap/geoserver/simcoe/Topo_Overlay/ows?service=wms&version=1.3.0&request=GetCapabilities",
         "secure": false,
         "primary": false,
         "urlType": "root",

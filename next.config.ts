@@ -44,6 +44,18 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
+  async rewrites() {
+    // Local dev only: the internal i-Map GeoServer isn't browser-reachable
+    // cross-origin (no CORS headers, county-internal network). Proxy it
+    // same-origin through the Next.js server instead, mirroring what the
+    // legacy CRA app did with its own dev-time setupProxy.js.
+    return [
+      {
+        source: "/geoserver-proxy/:path*",
+        destination: "https://ops-mz0075jf.cihs.ad.gov.on.ca/geoserver/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

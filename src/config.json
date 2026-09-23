@@ -3,18 +3,18 @@
   "mapId": "public",
   "headerLogoImageName": "countyofsimcoelogo.png",
   "logoOverlayText": "BETA",
-  "title": "Interactive Map - County of Simcoe (GIS)",
+  "title": "Interactive Map - NER Geomatics (GIS)",
   "description": "Interactive web mapping application for Simcoe County GIS data",
   "favicon": "simcoe_favicon.ico",
   "originUrl": "https://opengis.simcoe.ca",
   "feedbackUrl": "https://opengis.simcoe.ca/feedback",
-  "geoserverUrl": "https://opengis2.simcoe.ca/geoserver/",
-  "publicUrl": "https://opengis.simcoe.ca/public/",
+  "geoserverUrl": "/geoserver-proxy/",
+  "publicUrl": "/geoserver-proxy/",
   "geoserverPath": "geoserver",
   "printUrl": "https://opengis.simcoe.ca/print",
   "includeAppStats": true,
   "htmlIdentify": false,
-  "leftClickIdentify": false,
+  "leftClickIdentify": true,
   "excludeIdentifyTitleName": false,
   "allowIdentifyExport": true,
   "showFeedbackMessageOnStartup": false,
@@ -36,8 +36,8 @@
   "propertyReportUrl": "/api/public/reports/property/",
   "weatherRadarApiUrl": "",
   "parcelLayer": {
-    "url": "https://opengis.simcoe.ca/geoserver/wfs?service=wfs&version=2.0.0&request=GetFeature&typeNames=simcoe:Assessment%20Parcel&outputFormat=application/json",
-    "rollNumberFieldName": "ARN"
+    "url": "/geoserver-proxy/wfs?service=wfs&version=2.0.0&request=GetFeature&typeNames=ner_works:assessment_parcel&outputFormat=application/json",
+    "rollNumberFieldName": "assessment_roll_number"
   },
   "gitHubFollowUrl": "https://github.com/county-of-simcoe-gis",
   "gitHubFollowHandle": "Follow @simcoecountygis",
@@ -50,10 +50,10 @@
   "showHelpButtonInsteadOfFeedback": false,
   "onCoordinateZoomID": false,
   "centerCoords": [
-    -8878504.68,
-    5543492.45
+    -9135500,
+    6020500
   ],
-  "defaultZoom": 10,
+  "defaultZoom": 6,
   "maxZoom": 20,
   "controls": {
     "rotate": false,
@@ -88,6 +88,7 @@
     "sc-floating-menu-save-map-extent": true,
     "sc-floating-menu-report-problem": true,
     "sc-floating-menu-identify": true,
+    "sc-floating-menu-lhrs": true,
     "sc-floating-menu-google-maps": false,
     "sc-floating-menu-more": true
   },
@@ -107,70 +108,494 @@
     "sc-floating-menu-identify": true
   },
   "toc": {
-    "tocType": "LIST",
+    "tocType": "FOLDER",
     "geoserverLayerGroupsUrl": "",
     "geoserverLayerGroupsUrlType": "group",
     "esriServiceUrl": "",
-    "default_group": "All_Layers_Public",
+    "default_group": "",
     "sources": [
       {
         "group": {
-          "name": "Popular",
-          "displayName": "Popular",
-          "visibleLayers": [
-            "simcoe:Assessment Parcel"
-          ]
-        },
-        "layerUrl": "https://opengis.simcoe.ca/geoserver/simcoe/Popular/ows?service=wms&version=1.3.0&request=GetCapabilities",
-        "secure": false,
-        "primary": false,
-        "urlType": "root",
-        "type": "geoserver"
-      },
-      {
-        "group": {
-          "name": "Historical",
-          "displayName": "Historical",
+          "name": "CI_MNRF",
+          "displayName": "MNRF",
           "visibleLayers": []
         },
-        "layerUrl": "https://opengis.simcoe.ca/geoserver/simcoe/Historical/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "layerUrl": "/geoserver-proxy/CI_MNRF/ows?service=wms&version=1.3.0&request=GetCapabilities",
         "secure": false,
         "primary": false,
-        "urlType": "root",
+        "urlType": "flat",
         "type": "geoserver"
       },
       {
         "group": {
-          "name": "All_Layers_Public",
-          "displayName": "All Layers Public",
+          "name": "CPS_Data",
+          "displayName": "CPS_Data",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/CPS_Data/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Corridor_Management",
+          "displayName": "Corridor Management (in progress)",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Corridor_Management/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Culvert_Portal",
+          "displayName": "Non-Structural Culverts",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Culvert_Portal/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Environmental_Data",
+          "displayName": "Environmental Data",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Environmental_Data/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Environmental_Data_Provincial",
+          "displayName": "Environmental Data (Provincial)",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Environmental_Data_Provincial/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "FN_Land_Claim_Areas",
+          "displayName": "First Nation Land Claim Areas",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/FN_Land_Claim_Areas/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Geomatics",
+          "displayName": "Geomatics",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Geomatics/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Geotech",
+          "displayName": "Geotech",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Geotech/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Invasive_Species",
+          "displayName": "Invasive Species",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Invasive_Species/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "LHRS",
+          "displayName": "LHRS",
           "visibleLayers": [
-            "simcoe:Assessment Parcel"
+            "other_regional_data:lhrs_routes"
           ]
         },
-        "layerUrl": "https://opengis.simcoe.ca/geoserver/simcoe/All_Layers_Public/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "layerUrl": "/geoserver-proxy/LHRS/ows?service=wms&version=1.3.0&request=GetCapabilities",
         "secure": false,
         "primary": true,
-        "urlType": "root",
+        "urlType": "flat",
         "type": "geoserver"
       },
       {
         "group": {
-          "name": "Topo_Overlay",
-          "displayName": "Topo Overlay",
-          "visibleLayers": []
+          "name": "Land",
+          "displayName": "Land",
+          "visibleLayers": [
+            "other_regional_data:geographic_lot_fabric",
+            "ner_works:mto_townships_v2"
+          ]
         },
-        "layerUrl": "https://opengis.simcoe.ca/geoserver/simcoe/Topo_Overlay/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "layerUrl": "/geoserver-proxy/Land/ows?service=wms&version=1.3.0&request=GetCapabilities",
         "secure": false,
         "primary": false,
-        "urlType": "root",
+        "urlType": "flat",
         "type": "geoserver"
       },
       {
-        "layerUrl": "https://maps.simcoe.ca/arcgis/rest/services/Public/Operational_Layers_Dynamic/MapServer",
+        "group": {
+          "name": "MTO_Structures",
+          "displayName": "MTO_Structures",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/MTO_Structures/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
         "primary": false,
-        "type": "arcgis",
-        "open": true,
-        "useRedFolder": true
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Operations",
+          "displayName": "Operations",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Operations/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Pavement",
+          "displayName": "Pavement",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Pavement/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Responsibility_Areas",
+          "displayName": "Responsibility Areas",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Responsibility_Areas/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "SmartCL",
+          "displayName": "Smart Center Line (SmartCL)",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/SmartCL/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Title_Records_SmartTR",
+          "displayName": "Title Records (SmartTR)",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Title_Records_SmartTR/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Trails_Networks",
+          "displayName": "Trails Networks",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Trails_Networks/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "boundaries",
+          "displayName": "Boundaries",
+          "visibleLayers": [
+            "shp:Cities_and_Towns_filter_cities",
+            "lio_open_data:indian_reserve",
+            "other_regional_data:ner_boundary_major_lakes"
+          ]
+        },
+        "layerUrl": "/geoserver-proxy/boundaries/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "collector_data_backups",
+          "displayName": "Collector Data Backups",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/collector_data_backups/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "contracts_and_future_projects",
+          "displayName": "Contract History and Future Projects",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/contracts_and_future_projects/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "five_one_one",
+          "displayName": "511 - Traveller Information",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/five_one_one/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "mobileye_data",
+          "displayName": "Mobileye Evaluation Data",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/mobileye_data/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "opss",
+          "displayName": "OPSS",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/opss/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "par_additional_data",
+          "displayName": "PAR - Additional Data",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/par_additional_data/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "presentations",
+          "displayName": "Presentations",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/presentations/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "property",
+          "displayName": "Property",
+          "visibleLayers": [
+            "collector_data_backups:mv_property_access_and_condition"
+          ]
+        },
+        "layerUrl": "/geoserver-proxy/property/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "road_interests",
+          "displayName": "Roads",
+          "visibleLayers": [
+            "road_interests:mv_mto_jurisdiction_provincial_integrated",
+            "road_interests:connecting_links",
+            "road_interests:non_mto_jurisdiction"
+          ]
+        },
+        "layerUrl": "/geoserver-proxy/road_interests/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "traffic",
+          "displayName": "Traffic",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/traffic/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "traffic_operations_center",
+          "displayName": "Traffic Operations Center",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/traffic_operations_center/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "utilities",
+          "displayName": "Utilities",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/utilities/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "work_and_testing",
+          "displayName": "Custom Layers",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/work_and_testing/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "electrical_asset",
+          "displayName": "Electrical Assets",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/electrical_asset/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "electrical_data",
+          "displayName": "Electrical Data",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/electrical_data/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "operations_winter",
+          "displayName": "Operations (Winter)",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/operations_winter/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "PAR_Inspections",
+          "displayName": "PAR - Inspections",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/PAR_Inspections/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "Railways_and_Crossings",
+          "displayName": "Railways & Crossings",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/Railways_and_Crossings/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
+      },
+      {
+        "group": {
+          "name": "FN_Traditional_Territories_Assertions",
+          "displayName": "Indigenous Community Traditional Territories and Assertions",
+          "visibleLayers": []
+        },
+        "layerUrl": "/geoserver-proxy/FN_Traditional_Territories_Assertions/ows?service=wms&version=1.3.0&request=GetCapabilities",
+        "secure": false,
+        "primary": false,
+        "urlType": "flat",
+        "type": "geoserver"
       }
     ],
     "helpLink": "/help",
@@ -310,6 +735,13 @@
       "componentName": "Coordinates",
       "description": "Get coordinates throughout the map in a variety of different coordinate systems.",
       "imageName": "coordinates.png"
+    },
+    {
+      "id": 17,
+      "name": "LHRS",
+      "componentName": "LHRS",
+      "description": "Locate points and sections on provincial highways by map click, lat/long, highway and M distance, or basepoint and offset. Returns LHRS, CLRS and Smart CL referencing.",
+      "imageName": "lhrs.png"
     },
     {
       "id": 3,

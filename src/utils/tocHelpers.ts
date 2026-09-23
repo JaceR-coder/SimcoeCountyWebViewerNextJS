@@ -277,9 +277,26 @@ export async function getGroupsFromGeoServer(source: TOCSource, config: Config, 
     const resultObj = await fetchWMSCapabilities(source.layerUrl, source.secure, token);
 
     const urlType = source.urlType || "group";
-    const groupLayerList = urlType === "root" ? [resultObj.Capability.Layer.Layer[0]] : urlType === "group" ? resultObj.Capability.Layer.Layer[0].Layer || [] : [resultObj.Capability.Layer.Layer[0]];
+    // "flat": a single-name-scoped virtual service (e.g. /geoserver/<groupName>/ows) whose
+    // response has no intermediate named wrapper — the root <Layer> directly contains the
+    // group's real layers as flat children. Treat the root itself as the one group.
+    const groupLayerList =
+      urlType === "root"
+        ? [resultObj.Capability.Layer.Layer[0]]
+        : urlType === "group"
+          ? resultObj.Capability.Layer.Layer[0].Layer || []
+          : urlType === "flat"
+            ? [resultObj.Capability.Layer]
+            : [resultObj.Capability.Layer.Layer[0]];
 
-    const parentGroup = urlType === "root" ? resultObj.Capability.Layer.Layer[0] : urlType === "group" ? resultObj.Capability.Layer.Layer[0] : resultObj.Capability.Layer.Layer[0];
+    const parentGroup =
+      urlType === "root"
+        ? resultObj.Capability.Layer.Layer[0]
+        : urlType === "group"
+          ? resultObj.Capability.Layer.Layer[0]
+          : urlType === "flat"
+            ? resultObj.Capability.Layer
+            : resultObj.Capability.Layer.Layer[0];
 
     // Parse parent keywords for global settings
     const parentKeywords = parentGroup.KeywordList || [];
@@ -297,10 +314,15 @@ export async function getGroupsFromGeoServer(source: TOCSource, config: Config, 
     // Process each group
     for (const layerInfo of groupLayerList) {
       if (layerInfo.Layer !== undefined) {
-        const groupName = layerInfo.Name;
+        // The root <Layer> in a "flat" (single-name-scoped) response has no Name/Title of its
+        // own — fall back to what the source config already supplies in that case.
+        const groupName = layerInfo.Name || source.group?.name || "";
         const isDefault = groupName.toUpperCase() === defaultGroupName.toUpperCase();
-        const groupDisplayName = layerInfo.Title;
-        const groupUrl = source.layerUrl.split(`/${geoserverPath}/`)[0] + `/${geoserverPath}/` + groupName.replace(":", "/") + "/ows?service=wms&version=1.3.0&request=GetCapabilities";
+        const groupDisplayName = layerInfo.Title || source.group?.displayName || groupName;
+        // "flat" sources already scope directly to this one group — reuse the source URL as-is
+        // rather than reconstructing from groupName (which may just be the config-supplied name,
+        // not a real workspace-qualified name to derive a URL from).
+        const groupUrl = urlType === "flat" ? source.layerUrl : source.layerUrl.split(`/${geoserverPath}/`)[0] + `/${geoserverPath}/` + groupName.replace(":", "/") + "/ows?service=wms&version=1.3.0&request=GetCapabilities";
 
         // Parse group keywords
         const keywords = layerInfo.KeywordList || [];

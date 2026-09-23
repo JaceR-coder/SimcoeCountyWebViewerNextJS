@@ -1,0 +1,14 @@
+{
+  "apiUrl": "/api/public/lhrs",
+  "defaultSnappingDistance": 50,
+  "smartcl": {
+    "report_url": "https://ops-mz0075jf.cihs.ad.gov.on.ca/geomatics/smartcl/segments",
+    "params": {
+      "startX": "x1",
+      "startY": "y1",
+      "endX": "x2",
+      "endY": "y2",
+      "hwy": "hwy"
+    }
+  }
+}

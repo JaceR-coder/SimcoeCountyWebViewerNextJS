@@ -1,19 +1,5 @@
 import axiosInstance from "./axiosInstance";
 
-// Types for Radar Images API
-export interface RadarImage {
-  RADAR_STATION_CODE: string;
-  RADAR_CODE?: string;
-  RADAR_DESCRIPTION: string;
-  RADAR_DATE: string;
-  JS_MAPIMAGE: string;
-  FILE_NAME: string;
-  MINUTES_SINCE_2015: number;
-  TIME_ID?: number;
-  // allow additional fields from different API versions
-  [key: string]: unknown;
-}
-
 // Types for Weather Forecast API
 export interface WeatherWarning {
   priority: "low" | "medium" | "high";
@@ -39,24 +25,6 @@ export interface CityWeatherData {
     imageUrl?: string;
   }[];
   warnings: WeatherWarning[];
-}
-
-/**
- * Fetch radar images for a given date range
- */
-export async function getRadarImages(fromDate: string, toDate: string): Promise<RadarImage[]> {
-  try {
-    const response = await axiosInstance.get("/public/map/tool/weather/RadarImages", {
-      params: {
-        fromDate,
-        toDate,
-      },
-    });
-    return response.data || [];
-  } catch (error) {
-    console.error("Error fetching radar images:", error);
-    return [];
-  }
 }
 
 /**

@@ -9,14 +9,19 @@
  *
  * Resize is done with pointer events directly on a 6 px drag handle — no
  * extra dependency. Height is persisted to localStorage by the store.
+ *
+ * "Pop out" moves the same tabs/toolbar/grid into a separate browser window
+ * (AttributeTablePopout) - e.g. onto a second monitor - leaving a slim bar here.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FaTimes, FaTrash, FaDownload, FaMapMarkedAlt, FaFilter, FaWindowMinimize, FaChevronUp, FaEllipsisV, FaMapMarkerAlt, FaExchangeAlt, FaSearchPlus, FaMousePointer } from "react-icons/fa";
+import { FaTimes, FaTrash, FaMapMarkedAlt, FaFilter, FaWindowMinimize, FaChevronUp, FaEllipsisV, FaMapMarkerAlt, FaExchangeAlt, FaSearchPlus, FaMousePointer, FaFileCsv, FaFileExcel, FaExternalLinkAlt, FaWindowRestore, FaDownload, FaFileArchive } from "react-icons/fa";
 import { ATTRIBUTE_TABLE_DEFAULTS, selectActiveTab, useAttributeTableStore } from "@/stores/attributeTableStore";
 import { useAttributeTableLoader } from "@/hooks/useAttributeTableLoader";
 import { isWorkerSupported, workerExportCsv } from "@/lib/attributeTable/workerClient";
-import { getCachedFeatures, zoomToFeatures, clearHighlightsForLayer } from "@/lib/attributeTable/mapIntegration";
+import { getCachedFeatures, zoomToFeatures, clearHighlightsForLayer, getCurrentMapExtent } from "@/lib/attributeTable/mapIntegration";
+import { buildWfsExportUrl, type WfsExportFormat } from "@/lib/attributeTable/wfs";
+import { buildWfsCql, inexactWfsFilterFields } from "@/lib/attributeTable/serverFilters";
 import { useMyMapsStore, createMyMapsItem } from "@/stores/myMapsStore";
 import { useToastStore } from "@/hooks/useToast";
 import { useEventStore } from "@/stores/eventStore";
@@ -27,6 +32,11 @@ import { resolveDomainValue } from "@/utils/arcgisFieldMetadata";
 import AttributeTableTabs from "./AttributeTableTabs";
 import AttributeTableGrid from "./AttributeTableGrid";
 import AttributeTableMapSelect from "./AttributeTableMapSelect";
+import AttributeTablePopout from "./AttributeTablePopout";
+import { buildXlsx, type XlsxCell } from "@/lib/attributeTable/xlsx";
+
+/** "Export all matching" is refused above this many rows - filter or zoom in first. */
+export const EXPORT_ALL_MAX_ROWS = 250_000;
 
 /**
  * Track the map element's on-screen rect so the panel can sit flush under
@@ -109,6 +119,8 @@ export default function AttributeTablePanel(): React.ReactElement | null {
   const invertSelection = useAttributeTableStore((s) => s.invertSelection);
   const setSelectionOnly = useAttributeTableStore((s) => s.setSelectionOnly);
   const setMapSelectActive = useAttributeTableStore((s) => s.setMapSelectActive);
+  const poppedOut = useAttributeTableStore((s) => s.poppedOut);
+  const setPoppedOut = useAttributeTableStore((s) => s.setPoppedOut);
 
   const { loadMore } = useAttributeTableLoader();
 
@@ -126,14 +138,16 @@ export default function AttributeTablePanel(): React.ReactElement | null {
 
   const resize = useVerticalResize(setHeight, height);
 
-  const [exporting, setExporting] = React.useState(false);
+  const [exporting, setExporting] = React.useState<"csv" | "xlsx" | null>(null);
   const actionsMenuRef = useRef<HTMLDetailsElement | null>(null);
+  const exportAllMenuRef = useRef<HTMLDetailsElement | null>(null);
 
   // Close the actions dropdown whenever the active tab changes — its
   // enabled/disabled state and selection count are tab-specific, so leaving
   // it open against stale data would be confusing.
   useEffect(() => {
     actionsMenuRef.current?.removeAttribute("open");
+    exportAllMenuRef.current?.removeAttribute("open");
   }, [active?.layerId]);
 
   const mapRect = useMapRect(isOpen);
@@ -150,7 +164,7 @@ export default function AttributeTablePanel(): React.ReactElement | null {
 
   if (!isOpen || !active) return null;
 
-  if (minimized) {
+  if (minimized && !poppedOut) {
     return (
       <div
         className="fixed bottom-0 z-[500] bg-base-200 border-t border-base-300 shadow-[0_-2px_8px_rgba(0,0,0,0.12)] flex items-center justify-between gap-2 px-3 py-1 text-xs print:hidden"
@@ -171,10 +185,10 @@ export default function AttributeTablePanel(): React.ReactElement | null {
     );
   }
 
-  const onExportCsv = async () => {
+  const onExport = async (format: "csv" | "xlsx") => {
     if (!active.schema || !active.store || exporting) return;
     if (active.selection.size === 0) return;
-    setExporting(true);
+    setExporting(format);
     try {
       const store = active.store;
       // Export headers/values the same way the grid displays them: alias
@@ -189,29 +203,36 @@ export default function AttributeTablePanel(): React.ReactElement | null {
       }
 
       // Materialize rows as a 2D array of primitive values. This is the only
-      // place we pay a per-row allocation cost; the worker then handles the
-      // CPU-heavy stringify/escape/join off the main thread.
-      const rows: Array<Array<string | number | boolean | null>> = new Array(selectedRows.length);
+      // place we pay a per-row allocation cost; for CSV the worker then handles
+      // the CPU-heavy stringify/escape/join off the main thread.
+      const rows: XlsxCell[][] = new Array(selectedRows.length);
       for (let i = 0; i < selectedRows.length; i++) {
         const srcRow = selectedRows[i];
-        const r: Array<string | number | boolean | null> = new Array(columns.length);
+        const r: XlsxCell[] = new Array(columns.length);
         for (let c = 0; c < columns.length; c++) {
           const col = active.schema![c];
           const v = store.getCell(srcRow, col.name);
           // Format each cell the same way it displays on-screen (domain names,
-          // dates, booleans, etc.) so the CSV matches the grid; keep
+          // dates, booleans, etc.) so the export matches the grid; keep
           // null/undefined as an empty cell rather than the "N/A" placeholder.
-          r[c] = v === null || v === undefined ? "" : (resolveDomainValue(active.domains, col.name, v) ?? formatFieldValueAsText(col.name, v, col.type));
+          // Excel keeps plain numbers numeric so they can be summed/sorted.
+          if (v === null || v === undefined) r[c] = "";
+          else {
+            const domainName = resolveDomainValue(active.domains, col.name, v);
+            r[c] = domainName ?? (format === "xlsx" && typeof v === "number" && Number.isFinite(v) ? v : formatFieldValueAsText(col.name, v, col.type));
+          }
         }
         rows[i] = r;
       }
 
       let blob: Blob;
-      if (isWorkerSupported()) {
-        blob = await workerExportCsv(columns, rows);
+      if (format === "xlsx") {
+        blob = buildXlsx(columns, rows, active.layerName);
+      } else if (isWorkerSupported()) {
+        blob = await workerExportCsv(columns, rows as Array<Array<string | number | boolean | null>>);
       } else {
         // Fallback: build on main thread (test envs, SSR).
-        const escape = (v: string | number | boolean | null) => {
+        const escape = (v: XlsxCell) => {
           if (v === null || v === undefined) return "";
           const s = String(v);
           return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -224,13 +245,16 @@ export default function AttributeTablePanel(): React.ReactElement | null {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${active.layerName.replace(/[^a-z0-9_\-]+/gi, "_")}.csv`;
+      a.download = `${active.layerName.replace(/[^a-z0-9_\-]+/gi, "_")}.${format}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("[attributeTable] export failed", err);
+      useToastStore.getState().addToast("Export failed.", "error");
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   };
 
@@ -317,24 +341,56 @@ export default function AttributeTablePanel(): React.ReactElement | null {
     ? "Map selection active — click to disable. Click a feature to select (replaces selection). Hold Shift/Ctrl/Cmd to add/toggle. Shift+drag to box-select multiple features."
     : "Click a feature to select (replaces selection). Hold Shift/Ctrl/Cmd to add/toggle. Shift+drag to box-select multiple features.";
 
-  return (
-    <div
-      className="fixed bottom-0 z-[500] bg-base-100 border-t border-base-300 shadow-[0_-4px_16px_rgba(0,0,0,0.15)] flex flex-col print:hidden"
-      style={{ height, left: mapRect.left, width: mapRect.width }}
-      role="region"
-      aria-label="Attribute Table"
-    >
-      {/* Resize handle */}
-      <div
-        className="h-1.5 cursor-row-resize bg-base-300 hover:bg-primary/60 transition-colors"
-        onPointerDown={resize.onPointerDown}
-        onPointerMove={resize.onPointerMove}
-        onPointerUp={resize.onPointerUp}
-        title="Drag to resize"
-        role="separator"
-        aria-orientation="horizontal"
-      />
+  const exportItem = (format: "csv" | "xlsx") => (
+    <li>
+      <button
+        type="button"
+        onClick={() => {
+          actionsMenuRef.current?.removeAttribute("open");
+          void onExport(format);
+        }}
+        disabled={!active.store || active.selection.size === 0 || exporting !== null}
+      >
+        {format === "csv" ? <FaFileCsv size={10} /> : <FaFileExcel size={10} />}
+        {exporting === format ? "Exporting…" : format === "csv" ? "Export to CSV" : "Export to Excel"}
+      </button>
+    </li>
+  );
 
+  // "Export all matching": GeoServer writes the whole filtered result as a file (current column
+  // filters, map extent and sort), downloaded straight from the proxy - never loaded into the grid.
+  // WFS only (ArcGIS services have no equivalent), and not for NextAuth-secured layers, whose
+  // requests need a bearer header a plain download link can't carry.
+  const canExportAll = active.sourceType === "wfs" && !active.secured && !!active.typeName && !!active.schema;
+  const exportAllCount = active.totalCount ?? 0;
+  const exportAllTooBig = exportAllCount > EXPORT_ALL_MAX_ROWS;
+  const inexactFilters = canExportAll ? inexactWfsFilterFields(active.filters, active.schema) : [];
+
+  const onExportAll = (format: WfsExportFormat) => {
+    exportAllMenuRef.current?.removeAttribute("open");
+    if (!canExportAll || !active.schema) return;
+    const bbox = active.bboxFilterActive ? (getCurrentMapExtent() ?? undefined) : undefined;
+    const geometryField = active.fields?.find((f) => f.isGeometry)?.name ?? null;
+    const url = buildWfsExportUrl({
+      wfsUrl: active.wfsUrl,
+      layerName: active.typeName,
+      format,
+      cqlFilter: buildWfsCql(active.filters, active.schema, { bbox, geometryField }),
+      bbox,
+      sortBy: active.sort,
+      propertyNames: active.schema.map((c) => c.name),
+    });
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${active.layerName.replace(/[^a-z0-9_\-]+/gi, "_")}.${format === "csv" ? "csv" : "zip"}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    useToastStore.getState().addToast(`Exporting ${exportAllCount.toLocaleString()} rows - the download starts when the server has prepared the file.`, "info", 6000);
+  };
+
+  const content = (
+    <>
       {/* Tabs */}
       <AttributeTableTabs />
 
@@ -416,6 +472,36 @@ export default function AttributeTablePanel(): React.ReactElement | null {
 
         <div className="flex-1" />
 
+        {canExportAll ? (
+          <details ref={exportAllMenuRef} className="dropdown dropdown-top dropdown-end">
+            <summary
+              className={`btn btn-xs btn-ghost ${active.loading || exportAllCount === 0 ? "btn-disabled" : ""}`}
+              title="Download every row matching the current filters - not just the rows loaded here"
+              aria-label="Export all matching rows"
+            >
+              <FaDownload size={10} /> Export all
+            </summary>
+            <ul className="menu dropdown-content menu-sm bg-base-100 rounded-box z-[1] w-72 p-1 shadow-md border border-base-300">
+              <li className="menu-title text-xs">
+                {exportAllTooBig
+                  ? `${exportAllCount.toLocaleString()} rows match - over the ${EXPORT_ALL_MAX_ROWS.toLocaleString()} export limit. Filter a column or turn on Map extent first.`
+                  : `All ${exportAllCount.toLocaleString()} matching rows${active.bboxFilterActive ? " in the map extent" : ""}`}
+              </li>
+              {inexactFilters.length > 0 ? <li className="menu-title text-xs text-warning">Not exactly applied to the file: {inexactFilters.join(", ")}</li> : null}
+              <li>
+                <button type="button" onClick={() => onExportAll("csv")} disabled={exportAllTooBig}>
+                  <FaFileCsv size={10} /> CSV (attributes)
+                </button>
+              </li>
+              <li>
+                <button type="button" onClick={() => onExportAll("shapefile")} disabled={exportAllTooBig}>
+                  <FaFileArchive size={10} /> Shapefile (with geometry)
+                </button>
+              </li>
+            </ul>
+          </details>
+        ) : null}
+
         {/* Actions menu — CSV export + Add selection to My Maps. The menu
             uses a <details> element so clicking anywhere else closes it
             without us wiring up outside-click handlers. */}
@@ -430,20 +516,10 @@ export default function AttributeTablePanel(): React.ReactElement | null {
             {active.selection.size > 0 ? <span className="opacity-70">({active.selection.size})</span> : null}
           </summary>
           <ul className="menu dropdown-content menu-sm bg-base-100 rounded-box z-[1] w-56 p-1 shadow-md border border-base-300">
-            {active.canDownload ? (
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    actionsMenuRef.current?.removeAttribute("open");
-                    void onExportCsv();
-                  }}
-                  disabled={!active.store || active.selection.size === 0 || exporting}
-                >
-                  <FaDownload size={10} /> {exporting ? "Exporting…" : "Download as CSV"}
-                </button>
-              </li>
-            ) : null}
+            {/* Exports only rows the user can already see in the grid, so they aren't gated
+                on the layer's DOWNLOAD keyword (that controls whole-layer downloads). */}
+            {exportItem("csv")}
+            {exportItem("xlsx")}
             <li>
               <button
                 type="button"
@@ -458,9 +534,20 @@ export default function AttributeTablePanel(): React.ReactElement | null {
             </li>
           </ul>
         </details>
-        <button type="button" className="btn btn-xs btn-ghost" onClick={toggleMinimized} title="Minimize attribute table" aria-label="Minimize attribute table">
-          <FaWindowMinimize size={10} />
-        </button>
+        {poppedOut ? (
+          <button type="button" className="btn btn-xs btn-ghost" onClick={() => setPoppedOut(false)} title="Dock the table back into the map window" aria-label="Dock attribute table">
+            <FaWindowRestore size={10} /> Dock
+          </button>
+        ) : (
+          <>
+            <button type="button" className="btn btn-xs btn-ghost" onClick={() => setPoppedOut(true)} title="Open the table in its own window (e.g. on another monitor)" aria-label="Pop out attribute table">
+              <FaExternalLinkAlt size={10} />
+            </button>
+            <button type="button" className="btn btn-xs btn-ghost" onClick={toggleMinimized} title="Minimize attribute table" aria-label="Minimize attribute table">
+              <FaWindowMinimize size={10} />
+            </button>
+          </>
+        )}
         <button type="button" className="btn btn-xs btn-ghost" onClick={closeAll} title="Close attribute table" aria-label="Close attribute table">
           <FaTimes size={10} />
         </button>
@@ -468,16 +555,18 @@ export default function AttributeTablePanel(): React.ReactElement | null {
 
       {capBanner ? (
         <div className="alert alert-warning rounded-none text-xs py-1 px-2">
-          Maximum of {ATTRIBUTE_TABLE_DEFAULTS.rowCap.toLocaleString()} records reached ({active.totalCount?.toLocaleString()} match). Zoom in to a more focused area
-          {active.bboxFilterActive ? (
-            ""
-          ) : (
+          Showing the first {ATTRIBUTE_TABLE_DEFAULTS.rowCap.toLocaleString()} of {active.totalCount?.toLocaleString()} matching records. Type in a column filter
+          {active.bboxFilterActive ? " or zoom in" : (
             <>
-              {" "}
-              or enable <span className="font-semibold">Map extent</span>
+              , zoom in or enable <span className="font-semibold">Map extent</span>
             </>
           )}{" "}
-          to see all results.
+          to narrow them down{canExportAll ? (
+            <>
+              , or use <span className="font-semibold">Export all</span> to download every match
+            </>
+          ) : null}
+          .
         </div>
       ) : null}
 
@@ -488,6 +577,64 @@ export default function AttributeTablePanel(): React.ReactElement | null {
 
       {/* Map selection interaction (when active) */}
       {active.mapSelectActive && <AttributeTableMapSelect tab={active} />}
+    </>
+  );
+
+  if (poppedOut) {
+    return (
+      <>
+        <div
+          className="fixed bottom-0 z-[500] bg-base-200 border-t border-base-300 shadow-[0_-2px_8px_rgba(0,0,0,0.12)] flex items-center justify-between gap-2 px-3 py-1 text-xs print:hidden"
+          style={{ left: mapRect.left, width: mapRect.width, height: 32 }}
+          role="region"
+          aria-label="Attribute Table (in separate window)"
+        >
+          <span className="truncate">
+            <span className="font-semibold">Attribute Table</span>
+            <span className="opacity-60"> — open in a separate window</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <button type="button" className="btn btn-xs btn-ghost" onClick={() => setPoppedOut(false)} title="Dock the table back into the map window">
+              <FaWindowRestore size={10} /> Dock
+            </button>
+            <button type="button" className="btn btn-xs btn-ghost btn-square" onClick={closeAll} title="Close attribute table" aria-label="Close attribute table">
+              <FaTimes size={10} />
+            </button>
+          </span>
+        </div>
+        <AttributeTablePopout
+          title={`Attribute Table — ${active.layerName}`}
+          onClose={(reason) => {
+            setPoppedOut(false);
+            if (reason === "blocked") useToastStore.getState().addToast("The browser blocked the pop-out window. Allow pop-ups for this site and try again.", "warning", 6000);
+          }}
+        >
+          <div className="h-full flex flex-col bg-base-100 text-base-content" role="region" aria-label="Attribute Table">
+            {content}
+          </div>
+        </AttributeTablePopout>
+      </>
+    );
+  }
+
+  return (
+    <div
+      className="fixed bottom-0 z-[500] bg-base-100 border-t border-base-300 shadow-[0_-4px_16px_rgba(0,0,0,0.15)] flex flex-col print:hidden"
+      style={{ height, left: mapRect.left, width: mapRect.width }}
+      role="region"
+      aria-label="Attribute Table"
+    >
+      {/* Resize handle */}
+      <div
+        className="h-1.5 cursor-row-resize bg-base-300 hover:bg-primary/60 transition-colors"
+        onPointerDown={resize.onPointerDown}
+        onPointerMove={resize.onPointerMove}
+        onPointerUp={resize.onPointerUp}
+        title="Drag to resize"
+        role="separator"
+        aria-orientation="horizontal"
+      />
+      {content}
     </div>
   );
 }

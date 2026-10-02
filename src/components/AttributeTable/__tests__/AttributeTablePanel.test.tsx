@@ -136,4 +136,122 @@ describe("AttributeTablePanel", () => {
     // The selection count is rendered in the summary.
     expect(actionsSummaryEnabled.textContent).toMatch(/1/);
   });
+
+  it("offers CSV and Excel export even when the layer has no DOWNLOAD keyword", () => {
+    const layer = makeLayer({ canDownload: false });
+    seedTabWithData(layer);
+    act(() => {
+      useAttributeTableStore.getState().setSelection(layer.id, ["1"]);
+    });
+    render(<AttributeTablePanel />);
+    expect(screen.getByRole("button", { name: /export to csv/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /export to excel/i })).toBeEnabled();
+  });
+
+  describe("pop out", () => {
+    function fakePopup() {
+      const doc = document.implementation.createHTMLDocument("popup");
+      const listeners: Record<string, () => void> = {};
+      return {
+        document: doc,
+        focus: vi.fn(),
+        close: vi.fn(),
+        addEventListener: (type: string, fn: () => void) => (listeners[type] = fn),
+        removeEventListener: vi.fn(),
+        fire: (type: string) => listeners[type]?.(),
+      };
+    }
+
+    it("renders the table into a separate window and leaves a dock bar behind", () => {
+      const popup = fakePopup();
+      const open = vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+      seedTabWithData(makeLayer());
+      render(<AttributeTablePanel />);
+
+      fireEvent.click(screen.getByLabelText(/pop out attribute table/i));
+
+      expect(open).toHaveBeenCalledTimes(1);
+      // getBy throws if absent (toBeInTheDocument can't check elements from another document)
+      expect(within(popup.document.body).getByTestId("attr-grid")).toBeTruthy();
+      expect(popup.document.title).toMatch(/Parcels/);
+      expect(screen.queryByTestId("attr-grid")).toBeNull();
+      expect(screen.getByLabelText(/attribute table \(in separate window\)/i)).toBeInTheDocument();
+
+      // Dock from the main window closes the popup and brings the grid back
+      fireEvent.click(within(screen.getByLabelText(/attribute table \(in separate window\)/i)).getByText(/dock/i));
+      expect(popup.close).toHaveBeenCalled();
+      expect(screen.getByTestId("attr-grid")).toBeInTheDocument();
+      open.mockRestore();
+    });
+
+    it("docks back when the user closes the popup", () => {
+      const popup = fakePopup();
+      const open = vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+      seedTabWithData(makeLayer());
+      render(<AttributeTablePanel />);
+      fireEvent.click(screen.getByLabelText(/pop out attribute table/i));
+
+      act(() => popup.fire("pagehide"));
+      expect(useAttributeTableStore.getState().poppedOut).toBe(false);
+      expect(screen.getByTestId("attr-grid")).toBeInTheDocument();
+      open.mockRestore();
+    });
+
+    it("stays docked when the browser blocks the popup", () => {
+      const open = vi.spyOn(window, "open").mockReturnValue(null);
+      seedTabWithData(makeLayer());
+      render(<AttributeTablePanel />);
+      fireEvent.click(screen.getByLabelText(/pop out attribute table/i));
+
+      expect(useAttributeTableStore.getState().poppedOut).toBe(false);
+      expect(screen.getByTestId("attr-grid")).toBeInTheDocument();
+      open.mockRestore();
+    });
+  });
+
+  describe("export all matching", () => {
+    it("downloads the filtered layer straight from GeoServer as CSV", () => {
+      const layer = makeLayer({ wfsUrl: "/geoserver-proxy/wfs" });
+      seedTabWithData(layer);
+      act(() => {
+        useAttributeTableStore.getState().setFilter(layer.id, "x", "4");
+        useAttributeTableStore.getState().setSort(layer.id, { field: "x", direction: "D" });
+      });
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      render(<AttributeTablePanel />);
+
+      expect(screen.getByText(/all 1 matching rows/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /csv \(attributes\)/i }));
+
+      expect(click).toHaveBeenCalledTimes(1);
+      const anchor = click.mock.contexts[0] as HTMLAnchorElement;
+      const url = new URL(anchor.href);
+      expect(url.pathname).toBe("/geoserver-proxy/wfs");
+      expect(url.searchParams.get("typeNames")).toBe("simcoe:parcels");
+      expect(url.searchParams.get("outputFormat")).toBe("csv");
+      expect(url.searchParams.get("CQL_FILTER")).toBe(`strToLowerCase("x") LIKE '%4%'`);
+      expect(url.searchParams.get("sortBy")).toBe("x D");
+      expect(anchor.download).toBe("Parcels.csv");
+      click.mockRestore();
+    });
+
+    it("refuses exports over the row limit", () => {
+      const layer = makeLayer();
+      seedTabWithData(layer);
+      act(() => {
+        const tab = useAttributeTableStore.getState().tabs[0];
+        useAttributeTableStore.getState().replaceData(layer.id, { schema: tab.schema!, fields: tab.fields!, implicitSortField: "x", store: tab.store!, totalCount: 300_000, capReached: true });
+      });
+      render(<AttributeTablePanel />);
+      expect(screen.getByText(/over the 250,000 export limit/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /csv \(attributes\)/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /shapefile/i })).toBeDisabled();
+    });
+
+    it("is not offered for ArcGIS layers", () => {
+      seedTabWithData(makeLayer({ wfsUrl: "https://example.com/arcgis/rest/services/x/MapServer/0" }));
+      render(<AttributeTablePanel />);
+      expect(screen.queryByLabelText(/export all matching rows/i)).toBeNull();
+    });
+  });
 });

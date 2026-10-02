@@ -91,6 +91,8 @@ export interface AttributeTableTab {
 interface AttributeTableState {
   isOpen: boolean;
   minimized: boolean;
+  /** True while the table is shown in its own browser window (see AttributeTablePopout). */
+  poppedOut: boolean;
   height: number;
   activeLayerId: string | null;
   tabs: AttributeTableTab[];
@@ -103,6 +105,7 @@ interface AttributeTableState {
   setHeight: (h: number) => void;
   setMinimized: (m: boolean) => void;
   toggleMinimized: () => void;
+  setPoppedOut: (poppedOut: boolean) => void;
 
   setSort: (layerId: string, sort: SortSpec | null) => void;
   setFilter: (layerId: string, field: string, value: string) => void;
@@ -222,6 +225,7 @@ function persistHeight(h: number): void {
 export const useAttributeTableStore = create<AttributeTableState>((set, get) => ({
   isOpen: false,
   minimized: false,
+  poppedOut: false,
   height: readPersistedHeight(),
   activeLayerId: null,
   tabs: [],
@@ -246,7 +250,7 @@ export const useAttributeTableStore = create<AttributeTableState>((set, get) => 
       const tabs = s.tabs.filter((t) => t.layerId !== layerId);
       const stillOpen = tabs.length > 0;
       const nextActive = s.activeLayerId === layerId ? (tabs[0]?.layerId ?? null) : s.activeLayerId;
-      return { tabs, isOpen: stillOpen, activeLayerId: nextActive };
+      return { tabs, isOpen: stillOpen, poppedOut: stillOpen && s.poppedOut, activeLayerId: nextActive };
     });
   },
 
@@ -255,7 +259,7 @@ export const useAttributeTableStore = create<AttributeTableState>((set, get) => 
       t.abortController?.abort();
       t.store?.dispose();
     }
-    set({ tabs: [], isOpen: false, minimized: false, activeLayerId: null });
+    set({ tabs: [], isOpen: false, minimized: false, poppedOut: false, activeLayerId: null });
   },
 
   setActive: (layerId) => set({ activeLayerId: layerId }),
@@ -268,6 +272,7 @@ export const useAttributeTableStore = create<AttributeTableState>((set, get) => 
 
   setMinimized: (minimized) => set({ minimized }),
   toggleMinimized: () => set((s) => ({ minimized: !s.minimized })),
+  setPoppedOut: (poppedOut) => set({ poppedOut, minimized: false }),
 
   setSort: (layerId, sort) =>
     set((s) => ({

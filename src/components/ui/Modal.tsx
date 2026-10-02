@@ -14,8 +14,8 @@ export interface ModalProps {
   className?: string;
   /** Inline styles on the modal-box container */
   style?: React.CSSProperties;
-  /** Portal target — defaults to document.getElementById("portal-root") or document.body */
-  portalTarget?: "portal-root" | "body";
+  /** Portal target — defaults to document.getElementById("portal-root") or document.body; an element (e.g. a popup window's body) is used as-is */
+  portalTarget?: "portal-root" | "body" | HTMLElement;
 }
 
 /**
@@ -56,7 +56,8 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, classNa
 
   if (!isOpen) return null;
 
-  const target = typeof window !== "undefined" ? (portalTarget === "portal-root" ? document.getElementById("portal-root") : null) || document.body : null;
+  const target =
+    typeof window === "undefined" ? null : typeof portalTarget === "object" ? portalTarget : (portalTarget === "portal-root" ? document.getElementById("portal-root") : null) || document.body;
 
   if (!target) return null;
 

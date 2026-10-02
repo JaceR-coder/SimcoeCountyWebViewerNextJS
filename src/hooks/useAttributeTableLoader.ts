@@ -14,6 +14,8 @@
  *      still returns the "natural order without a primary key" exception, we
  *      retry with the first attribute as a safety net.
  *   4. On sort/filter/bbox change: abort in-flight, reload from page 0.
+ *      Column filters go to the server (serverFilters.ts) so they match the
+ *      whole layer, not just the rows already loaded.
  *   5. On close/unmount: abort pending requests.
  */
 
@@ -25,6 +27,7 @@ import { describeArcgisLayer, fetchArcgisCount, fetchArcgisPage, parseArcgisLaye
 import { ColumnarStore, type ColumnSchema } from "@/lib/attributeTable/columnarStore";
 import type { ArcgisCodedValue } from "@/utils/arcgisFieldMetadata";
 import { cacheGeometries, getCurrentMapExtent } from "@/lib/attributeTable/mapIntegration";
+import { buildArcgisWhere, buildWfsCql } from "@/lib/attributeTable/serverFilters";
 import { useToastStore } from "@/hooks/useToast";
 
 // ---------------------------------------------------------------------------
@@ -35,40 +38,8 @@ function schemaFromFields(fields: WfsFieldDescriptor[]): ColumnSchema[] {
   return fields.filter((f) => !f.isGeometry).map((f) => ({ name: f.name, type: f.type, alias: f.alias }));
 }
 
-function buildCqlFromFilters(filters: Record<string, string>, schema: ColumnSchema[] | null): string | undefined {
-  const parts: string[] = [];
-  for (const [field, value] of Object.entries(filters)) {
-    if (!value) continue;
-    const col = schema?.find((c) => c.name === field);
-    const escaped = value.replace(/'/g, "''");
-    if (col?.type === "number") {
-      const n = Number(value);
-      if (Number.isFinite(n)) parts.push(`${field} = ${n}`);
-    } else {
-      parts.push(`strToLowerCase(${field}) LIKE '%${escaped.toLowerCase()}%'`);
-    }
-  }
-  return parts.length > 0 ? parts.join(" AND ") : undefined;
-}
-
-/**
- * ArcGIS equivalent of {@link buildCqlFromFilters}. Uses SQL-92-ish LIKE
- * (with %) for strings and `=` for numbers.
- */
-function buildArcgisWhereFromFilters(filters: Record<string, string>, schema: ColumnSchema[] | null): string | undefined {
-  const parts: string[] = [];
-  for (const [field, value] of Object.entries(filters)) {
-    if (!value) continue;
-    const col = schema?.find((c) => c.name === field);
-    if (col?.type === "number") {
-      const n = Number(value);
-      if (Number.isFinite(n)) parts.push(`${field} = ${n}`);
-    } else {
-      const escaped = value.replace(/'/g, "''");
-      parts.push(`UPPER(${field}) LIKE UPPER('%${escaped}%')`);
-    }
-  }
-  return parts.length > 0 ? parts.join(" AND ") : undefined;
+function geometryFieldOf(fields: WfsFieldDescriptor[] | null): string | null {
+  return fields?.find((f) => f.isGeometry)?.name ?? null;
 }
 
 function resolveSortField(userSort: { field: string; direction: "A" | "D" } | null, implicit: string | null, _fields: WfsFieldDescriptor[] | null): { field: string; direction: "A" | "D" } | null {
@@ -143,6 +114,7 @@ async function describeAndCount(
     const total = await fetchArcgisCount({
       endpoint,
       secured: tab.secured,
+      where: buildArcgisWhere(tab.filters, tab.schema, info.domains),
       bbox: tab.bboxFilterActive ? (getCurrentMapExtent() ?? undefined) : undefined,
       signal,
     });
@@ -155,12 +127,15 @@ async function describeAndCount(
     };
   }
 
+  // Filters only exist once the grid has loaded, so tab.fields is known whenever they apply
+  const bbox = tab.bboxFilterActive ? (getCurrentMapExtent() ?? undefined) : undefined;
   const [fields, total] = await Promise.all([
     tab.fields ? Promise.resolve(tab.fields) : describeFeatureType(tab.wfsUrl, tab.typeName, signal),
     fetchWfsCount({
       wfsUrl: tab.wfsUrl,
       layerName: tab.typeName,
-      bbox: tab.bboxFilterActive ? (getCurrentMapExtent() ?? undefined) : undefined,
+      cqlFilter: buildWfsCql(tab.filters, tab.schema, { bbox, geometryField: geometryFieldOf(tab.fields) }),
+      bbox,
       signal,
     }),
   ]);
@@ -177,6 +152,7 @@ async function fetchPage(args: {
   fields: WfsFieldDescriptor[] | null;
   schema: ColumnSchema[] | null;
   filters: Record<string, string>;
+  domains?: Record<string, ArcgisCodedValue[]> | null;
   objectIdField?: string;
   supportsPagination?: boolean;
   signal: AbortSignal;
@@ -192,7 +168,7 @@ async function fetchPage(args: {
       startIndex: args.startIndex,
       count: args.count,
       sortBy: args.sortBy ?? undefined,
-      where: buildArcgisWhereFromFilters(args.filters, args.schema),
+      where: buildArcgisWhere(args.filters, args.schema, args.domains ?? args.tab.domains),
       bbox: args.bbox,
       includeGeometry: true,
       signal: args.signal,
@@ -215,7 +191,7 @@ async function fetchPage(args: {
     startIndex: args.startIndex,
     count: args.count,
     sortBy: args.sortBy,
-    cqlFilter: buildCqlFromFilters(args.filters, args.schema),
+    cqlFilter: buildWfsCql(args.filters, args.schema, { bbox: args.bbox, geometryField: geometryFieldOf(args.fields) }),
     bbox: args.bbox,
     fallbackFields: args.fields,
     signal: args.signal,
@@ -266,7 +242,8 @@ export function useAttributeTableLoader(): { loadMore: () => Promise<void>; relo
         bbox,
         fields,
         schema,
-        filters: {},
+        filters: tab.filters,
+        domains,
         objectIdField: implicitSortField ?? undefined,
         supportsPagination,
         signal: ctrl.signal,
@@ -299,7 +276,8 @@ export function useAttributeTableLoader(): { loadMore: () => Promise<void>; relo
         domains,
       });
 
-      if (capReached && effectiveTotal > ATTRIBUTE_TABLE_DEFAULTS.rowCap) {
+      // Not while filtering: the banner already says so, and a toast per keystroke is noise
+      if (capReached && effectiveTotal > ATTRIBUTE_TABLE_DEFAULTS.rowCap && Object.keys(tab.filters).length === 0) {
         useToastStore
           .getState()
           .addToast(
@@ -344,7 +322,7 @@ export function useAttributeTableLoader(): { loadMore: () => Promise<void>; relo
         bbox,
         fields: tab.fields,
         schema: tab.schema,
-        filters: {},
+        filters: tab.filters,
         objectIdField: tab.implicitSortField ?? undefined,
         signal: ctrl.signal,
       });
@@ -377,7 +355,8 @@ export function useAttributeTableLoader(): { loadMore: () => Promise<void>; relo
   const extentKey = active?.bboxFilterActive && currentExtent ? currentExtent.map((n) => Math.round(n * 10) / 10).join(",") : "";
 
   const lastKeyByTab = useRef<Map<string, string>>(new Map());
-  const activeKey = active ? `${active.sort ? `${active.sort.field}:${active.sort.direction}` : ""}|${active.bboxFilterActive ? 1 : 0}|${extentKey}` : "";
+  const filtersKey = active ? JSON.stringify(Object.entries(active.filters).sort(([a], [b]) => a.localeCompare(b))) : "";
+  const activeKey = active ? `${active.sort ? `${active.sort.field}:${active.sort.direction}` : ""}|${active.bboxFilterActive ? 1 : 0}|${extentKey}|${filtersKey}` : "";
 
   useEffect(() => {
     if (!active) return;

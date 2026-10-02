@@ -12,7 +12,7 @@
  *  - Selection is a `Set<fid>` on the store; row highlight is read via
  *    `selection.has(fid)` — no per-row React state.
  *  - Column defs are memoized against the tab's schema reference.
- *  - Filter inputs are debounced (250 ms) before dispatching a server reload.
+ *  - Filter inputs are debounced (500 ms) before dispatching a server reload.
  *  - Sort toggles a `SortSpec` on the store; the loader hook re-fetches with
  *    `sortBy=<field> A|D` and resets the store.
  */
@@ -81,7 +81,7 @@ export default memo(function AttributeTableGrid({ tab, onLoadMore }: Props) {
       for (const field of Object.keys(tab.filters)) {
         if (!(field in filterDrafts)) setFilter(tab.layerId, field, "");
       }
-    }, 250);
+    }, 500); // each filter change is a server query - wait for a pause in typing
     return () => clearTimeout(id);
   }, [filterDrafts, tab.layerId, tab.filters, setFilter]);
 

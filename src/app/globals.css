@@ -93,6 +93,11 @@ body {
   transition: left 0.3s ease-in-out;
 }
 
+/* Map canvas behind the basemap (all that shows with "Blank Map") - toned down to suit dark mode */
+[data-theme="dark"] .app-map {
+  background-color: #7c8490;
+}
+
 .app-map.sidebar-closed {
   left: 65px;
 }

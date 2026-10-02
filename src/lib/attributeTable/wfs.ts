@@ -263,6 +263,43 @@ export async function fetchWfsPage(opts: WfsPageOptions): Promise<WfsPageResult>
   };
 }
 
+export type WfsExportFormat = "csv" | "shapefile";
+
+/**
+ * GetFeature URL that makes GeoServer write every matching feature as a file
+ * download ("Export all matching" in the attribute table). The browser fetches
+ * it directly, so nothing is held in page memory; the GeoServer proxy streams it.
+ * No `count`: the server-side limit applies. CSV drops geometry via
+ * `propertyName`; the shapefile needs it.
+ */
+export function buildWfsExportUrl(opts: {
+  wfsUrl: string;
+  layerName: string;
+  format: WfsExportFormat;
+  cqlFilter?: string;
+  bbox?: [number, number, number, number];
+  srsName?: string;
+  sortBy?: { field: string; direction: "A" | "D" } | null;
+  propertyNames?: string[];
+}): string {
+  const srsName = opts.srsName ?? "EPSG:3857";
+  const params: Record<string, string | number | undefined> = {
+    service: "WFS",
+    version: "2.0.0",
+    request: "GetFeature",
+    typeNames: opts.layerName,
+    outputFormat: opts.format === "csv" ? "csv" : "SHAPE-ZIP",
+    srsName,
+  };
+  if (opts.sortBy) params["sortBy"] = `${opts.sortBy.field} ${opts.sortBy.direction}`;
+  if (opts.cqlFilter) params["CQL_FILTER"] = opts.cqlFilter;
+  else if (opts.bbox) params["bbox"] = `${opts.bbox.join(",")},${srsName}`;
+  if (opts.format === "csv" && opts.propertyNames && opts.propertyNames.length > 0) {
+    params["propertyName"] = opts.propertyNames.join(",");
+  }
+  return joinParams(extractWfsBase(opts.wfsUrl), params);
+}
+
 /**
  * Fetch total feature count via `resultType=hits`. Response is small XML; we
  * parse the `numberMatched` / `numberOfFeatures` attribute with a regex rather

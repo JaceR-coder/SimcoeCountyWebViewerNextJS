@@ -4,6 +4,7 @@ import React from "react";
 import { FaTimes } from "react-icons/fa";
 import { Modal } from "@/components/ui/Modal";
 import Attachments from "@/components/common/Attachments";
+import { usePopoutBody } from "./AttributeTablePopout";
 
 interface Props {
   isOpen: boolean;
@@ -18,8 +19,10 @@ interface Props {
  * Identify panel.
  */
 const AttributeTableAttachmentsDialog: React.FC<Props> = ({ isOpen, onClose, title, attachmentUrl }) => {
+  // When the table is popped out, open the dialog in that window rather than behind it
+  const popoutBody = usePopoutBody();
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg">
+    <Modal isOpen={isOpen} onClose={onClose} className="max-w-lg" portalTarget={popoutBody ?? undefined}>
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-semibold text-sm truncate" title={title}>
           Attachments — {title}

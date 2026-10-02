@@ -294,18 +294,18 @@
     },
     {
       "id": 3,
-      "name": "Print",
+      "name": "Print (Server)",
       "componentName": "Print",
       "description": "This tool allows users to print their map view in a variety of formats such as pdf and jpeg.",
-      "imageName": "print.png"
+      "imageName": "print.png",
+      "disable": true
     },
     {
       "id": 13,
-      "name": "Print Local (Beta)",
+      "name": "Print",
       "componentName": "PrintLocal",
-      "description": "This tool allows users to print their map view in a variety of formats such as pdf and jpeg locally.",
-      "imageName": "print.png",
-      "disable": true
+      "description": "This tool allows users to print their map view in a variety of formats such as pdf and jpeg.",
+      "imageName": "print.png"
     },
     {
       "id": 9,
@@ -336,7 +336,8 @@
       "name": "Lot And Concession",
       "componentName": "LotAndConcession",
       "description": "This tool allows you to search Lot and Concessions.",
-      "imageName": "lotAndConcession.png"
+      "imageName": "lotAndConcession.png",
+      "disable": true
     },
     {
       "id": 7,

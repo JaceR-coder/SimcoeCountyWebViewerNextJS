@@ -192,3 +192,10 @@ export function resolveDomainValue(domains: Record<string, ArcgisCodedValue[]> |
   }
   return undefined;
 }
+
+/** The coded values for a field (matched like {@link resolveDomainValue}), or undefined when it has no domain. */
+export function getFieldDomain(domains: Record<string, ArcgisCodedValue[]> | null | undefined, fieldName: string): ArcgisCodedValue[] | undefined {
+  if (!domains) return undefined;
+  const codedValues = lookupEntry(domains, fieldName);
+  return codedValues && codedValues.length > 0 ? codedValues : undefined;
+}

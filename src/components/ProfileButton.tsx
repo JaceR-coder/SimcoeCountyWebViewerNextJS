@@ -4,10 +4,17 @@ import { useState, useRef, useEffect } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { FaSignInAlt, FaSignOutAlt, FaSpinner } from "react-icons/fa";
 import ThemeToggle from "@/components/ThemeToggle";
+import { useAppStore } from "@/stores/appStore";
+import GeomaticsProfileButton from "@/components/GeomaticsProfileButton";
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0";
 
 export default function ProfileButton() {
+  const authProvider = useAppStore((s) => s.config?.authProvider);
+  return authProvider === "pygeomatics" ? <GeomaticsProfileButton /> : <AzureProfileButton />;
+}
+
+function AzureProfileButton() {
   const { data: session, status } = useSession();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);

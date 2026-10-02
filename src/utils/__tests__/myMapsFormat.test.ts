@@ -267,7 +267,8 @@ describe("buildSavePayload", () => {
       toolTipId: "tooltip-uuid",
     });
 
-    expect(Object.keys(payload).sort()).toEqual(["drawColor", "drawOpacity", "drawStyle", "drawType", "items", "toolTipClass", "toolTipId", "tooltipClass"].sort());
+    // folders/activeFolderId: the legacy i-Map's My Maps folders, saved the same way it does
+    expect(Object.keys(payload).sort()).toEqual(["activeFolderId", "drawColor", "drawOpacity", "drawStyle", "drawType", "folders", "items", "toolTipClass", "toolTipId", "tooltipClass"].sort());
     expect(payload.drawType).toBe("Cancel");
     expect(payload.drawColor).toBe("#e809e5");
     expect(payload.drawOpacity).toBe(0.8);
@@ -293,7 +294,7 @@ describe("buildSavePayload", () => {
     expect(items).toHaveLength(1);
     const item = items[0];
 
-    expect(Object.keys(item).sort()).toEqual(["drawType", "featureGeoJSON", "geometryType", "id", "isParcel", "label", "labelRotation", "labelStyle", "labelVisible", "style", "visible"].sort());
+    expect(Object.keys(item).sort()).toEqual(["drawType", "featureGeoJSON", "folderId", "geometryType", "id", "isParcel", "label", "labelRotation", "labelStyle", "labelVisible", "style", "visible"].sort());
 
     // The `style` field must be in legacy `_` shape
     const style = item.style as Record<string, unknown>;

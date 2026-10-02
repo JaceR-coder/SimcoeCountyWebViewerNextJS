@@ -45,7 +45,8 @@ export default function GlobalDrawingOptionsPopup() {
   const addListener = useEventStore((s) => s.addListener);
   const removeListener = useEventStore((s) => s.removeListener);
   const items = useMyMapsStore((s) => s.items);
-  const removeItem = useMyMapsStore((s) => s.removeItem);
+  // Single-item deletes get the Undo toast (legacy My Maps onItemDelete)
+  const removeItem = useMyMapsStore((s) => s.deleteItemWithUndo);
   const updateItemLabel = useMyMapsStore((s) => s.updateItemLabel);
   const updateItemLabelVisibility = useMyMapsStore((s) => s.updateItemLabelVisibility);
   const updateItemLabelRotation = useMyMapsStore((s) => s.updateItemLabelRotation);

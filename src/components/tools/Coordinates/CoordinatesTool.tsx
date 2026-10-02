@@ -32,6 +32,7 @@ import { unByKey } from "ol/Observable";
 import type { EventsKey } from "ol/events";
 import type { Coordinate } from "ol/coordinate";
 import { LayerManager } from "@/utils/openlayers/LayerManager";
+import MtoCoordinatesSection, { type CapturedPoint } from "./MtoCoordinatesSection";
 
 interface CoordinatesToolProps {
   name?: string;
@@ -95,6 +96,9 @@ export default function CoordinatesTool({ name = "Coordinates", helpLink, hideHe
   // Map scale state
   const [mapScale, setMapScale] = useState<number>(0);
 
+  // Last map-click point, fed to the MTO coordinate systems section
+  const [capturedPoint, setCapturedPoint] = useState<CapturedPoint | null>(null);
+
   // Refs for OpenLayers objects
   const vectorLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const layerIdRef = useRef<string | null>(null);
@@ -154,10 +158,21 @@ export default function CoordinatesTool({ name = "Coordinates", helpLink, hideHe
       setNad83Coords({ x: String(utmNad83[0]), y: String(utmNad83[1]) });
       setNad27Coords({ x: String(utmNad27[0]), y: String(utmNad27[1]) });
 
+      setCapturedPoint((prev) => ({ coord: webMercator, id: (prev?.id ?? 0) + 1 }));
+
       glowAllInputs();
       createPoint(webMercator, false);
     },
     [createPoint, glowAllInputs],
+  );
+
+  // MTO section: move the marker, optionally panning or zooming to it
+  const onMtoMovePoint = useCallback(
+    (coords: Coordinate, mode: "none" | "pan" | "zoom") => {
+      createPoint(coords, mode === "zoom");
+      if (mode === "pan" && map) map.getView().animate({ center: coords, duration: 250 });
+    },
+    [createPoint, map],
   );
 
   // Handle pointer move
@@ -297,6 +312,8 @@ export default function CoordinatesTool({ name = "Coordinates", helpLink, hideHe
         </p>
 
         <div className="space-y-3">
+          <MtoCoordinatesSection capturedPoint={capturedPoint} livePoint={liveWebMercator} onMovePoint={onMtoMovePoint} onMyMapsClick={onMyMapsClick} copyToClipboard={copyToClipboard} />
+
           <CustomCoordinatesSection
             title="Map Coordinates (Web Mercator - Meters)"
             projType="webmercator"

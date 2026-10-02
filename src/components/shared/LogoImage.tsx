@@ -21,7 +21,7 @@ export interface LogoImageProps {
  * so that SVGs and bitmaps scale proportionally without overflowing their
  * bounding box.
  */
-export default function LogoImage({ headerLogoImageName, alt = "County of Simcoe", className, containerClassName }: LogoImageProps) {
+export default function LogoImage({ headerLogoImageName, alt = "Ministry of Transportation", className, containerClassName }: LogoImageProps) {
   const src = getLogoImage(headerLogoImageName);
 
   const containerClasses = [

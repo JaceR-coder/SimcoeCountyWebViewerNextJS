@@ -19,6 +19,7 @@
 
 # production
 /build
+/dist-iis
 
 # misc
 .DS_Store

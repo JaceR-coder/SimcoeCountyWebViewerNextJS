@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useState, useEffect } from "react";
-import { useMyMapsStore } from "@/stores/myMapsStore";
+import { useMyMapsStore, type MyMapsFolder } from "@/stores/myMapsStore";
 import { useEventStore } from "@/stores/eventStore";
 import { useMapStore } from "@/stores/mapStore";
 import { useAppStore } from "@/stores/appStore";
@@ -10,6 +10,7 @@ import { useSidebarStore } from "@/stores/sidebarStore";
 import ButtonBar from "@/components/myMaps/ButtonBar";
 import ColorBar from "@/components/myMaps/ColorBar";
 import MyMapsItems from "@/components/myMaps/MyMapsItems";
+import type { ExportFormat } from "@/components/myMaps/MyMapsFolder";
 import MyMapsAdvanced from "@/components/myMaps/MyMapsAdvanced";
 import MyMapsItemPopup from "@/components/myMaps/MyMapsItemPopup";
 import ShowGeometryModal from "@/components/myMaps/ShowGeometryModal";
@@ -42,7 +43,7 @@ const MyMaps: React.FC<MyMapsProps> = ({ visible = true }) => {
   const [isReportProblemModalOpen, setIsReportProblemModalOpen] = useState(false);
 
   // Store hooks
-  const { drawType, drawColor, isEditing, setDrawType, updateItemLabel, removeItem, setEditMode, toolTipId, toolTipClass, hasItems, saveToApi, importFromApi } = useMyMapsStore();
+  const { drawType, drawColor, isEditing, setDrawType, updateItemLabel, deleteItemWithUndo, setEditMode, toolTipId, toolTipClass, hasItems, saveToApi, importFromApi } = useMyMapsStore();
   const { map } = useMapStore();
   const { config } = useAppStore();
   const urlParameters = useAppStore((state) => state.urlParameters);
@@ -126,11 +127,11 @@ const MyMaps: React.FC<MyMapsProps> = ({ visible = true }) => {
 
   const handleDeleteFromPopup = useCallback(
     (item: MyMapsItemType) => {
-      removeItem(item.id);
+      deleteItemWithUndo(item.id);
       handleClosePopup();
       emit("mymap-item-deleted", { id: item.id });
     },
-    [removeItem, handleClosePopup, emit],
+    [deleteItemWithUndo, handleClosePopup, emit],
   );
 
   const handleShowGeometry = useCallback(
@@ -297,9 +298,37 @@ const MyMaps: React.FC<MyMapsProps> = ({ visible = true }) => {
 
   // Handle item deletion
   const handleItemDelete = (id: string) => {
-    removeItem(id);
+    deleteItemWithUndo(id); // toast with Undo, as in legacy
     emit("mymap-item-deleted", { id });
   };
+
+  // ── Folders (legacy My Maps organisation) ──────────────────────────────
+  const folders = useMyMapsStore((s) => s.folders);
+
+  // Item Tools > Move to Folder ("new" = create a folder and move the item straight into it)
+  const handleMoveToFolder = useCallback((item: MyMapsItemType, folderId: string | null | "new") => {
+    const { createFolder, moveItemToFolder } = useMyMapsStore.getState();
+    moveItemToFolder(item.id, folderId === "new" ? createFolder() : folderId);
+  }, []);
+
+  // Folder Options > Save Folder (Get Shareable Link) - saves just that folder, so importing the
+  // ID recreates only it (in either this app or the legacy i-Map)
+  const handleSaveFolder = useCallback(
+    async (folder: MyMapsFolder) => {
+      const result = await useMyMapsStore.getState().saveToApi({ folderId: folder.id });
+      if (result.success) toast.success(`"${folder.label}" has been saved! Its ID (${result.id}) has been copied to the clipboard.`);
+      else toast.error(result.message || `Could not save "${folder.label}".`);
+    },
+    [toast],
+  );
+
+  const handleExportFolder = useCallback(
+    (folderItems: MyMapsItemType[], format: ExportFormat) => {
+      const result = useMyMapsStore.getState().exportItemsToFile(folderItems, format);
+      if (!result.success) toast.error(result.message || `Unable to export to ${format}.`);
+    },
+    [toast],
+  );
 
   // Handle edit mode toggle from Advanced panel
   const handleEditFeatures = (editing: boolean, mode = "vertices") => {
@@ -517,6 +546,8 @@ const MyMaps: React.FC<MyMapsProps> = ({ visible = true }) => {
         onShowItemOptions={handleShowItemOptions}
         onHoverStart={handleItemHoverStart}
         onHoverEnd={handleItemHoverEnd}
+        onSaveFolder={handleSaveFolder}
+        onExportFolder={handleExportFolder}
         isEditing={isEditing}
       />
 
@@ -544,6 +575,8 @@ const MyMaps: React.FC<MyMapsProps> = ({ visible = true }) => {
         onExport={handleExportFeature}
         onIdentify={handleIdentify}
         onReportProblem={handleReportProblem}
+        folders={folders}
+        onMoveToFolder={handleMoveToFolder}
       />
 
       {/* Tooltip for bearing/measure tools */}

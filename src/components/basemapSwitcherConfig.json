@@ -1,5 +1,6 @@
 {
   "defaultButton": "topo",
+  "imageryOptionIndex": 2,
   "streetService": {
     "url": "https://maps.simcoe.ca/arcgis/rest/services/Public/Streets_Cache/MapServer/tile/{z}/{y}/{x}",
     "fullExtent": [-8938992.401246801, 5456230.285257593, -8801900.781241283, 5610242.681997935]
@@ -11,9 +12,26 @@
   "worldImageryService": "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   "topoServices": [
     {
+      "name": "Blank Map",
+      "image": "blank-map.png",
+      "index": 0,
+      "layers": []
+    },
+    {
+      "name": "LIO - Ontario Imagery",
+      "image": "LIO_Imagery.png",
+      "index": 1,
+      "layers": [
+        {
+          "url": "https://intra.ws.lioservices.lrc.gov.on.ca/arcgis2/rest/services/LIO_Imagery/Ontario_Imagery_Web_Map_Service/MapServer/tile/{z}/{y}/{x}",
+          "type": "ESRI_TILED"
+        }
+      ]
+    },
+    {
       "name": "Topographic",
       "image": "topo.png",
-      "index": 0,
+      "index": 2,
       "layers": [
         {
           "url": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
@@ -54,7 +72,7 @@
     {
       "name": "Light Grey",
       "image": "light-grey.png",
-      "index": 1,
+      "index": 3,
       "layers": [
         {
           "url": "https://maps.simcoe.ca/arcgis/rest/services/Public/Streets_Black_And_White_Cache/MapServer/tile/{z}/{y}/{x}",
@@ -87,7 +105,7 @@
     {
       "name": "Streets",
       "image": "streets.png",
-      "index": 2,
+      "index": 4,
       "layers": [
         {
           "url": "https://maps.simcoe.ca/arcgis/rest/services/Public/Streets_Black_And_White_Cache/MapServer/tile/{z}/{y}/{x}",
@@ -120,7 +138,7 @@
     {
       "name": "LIO Topographic",
       "image": "LIO_Topo_2.png",
-      "index": 3,
+      "index": 5,
       "layers": [
         {
           "url": "https://ws.lioservices.lrc.gov.on.ca/arcgis1/rest/services/LIO_Cartographic/LIO_Topographic/MapServer/tile/{z}/{y}/{x}",
@@ -131,24 +149,63 @@
       ]
     },
     {
+      "name": "MNR LIO Topo Beta",
+      "image": "LIO_Topo.png",
+      "index": 6,
+      "layers": [
+        {
+          "url": "https://tiles.arcgis.com/tiles/TJH5KDher0W13Kgo/arcgis/rest/services/Ontario_Vector_Topographic_Data_Cache_Service/VectorTileServer",
+          "type": "ESRI_VECTOR_TILED",
+          "rootPath": "https://tiles.arcgis.com/tiles/TJH5KDher0W13Kgo/arcgis/rest/services/Ontario_Vector_Topographic_Data_Cache_Service/VectorTileServer/resources/styles/root.json"
+        }
+      ]
+    },
+    {
+      "name": "ESRI World Imagery",
+      "image": "Esri_World_Imagery.png",
+      "index": 7,
+      "layers": [
+        {
+          "url": "https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          "type": "ESRI_TILED"
+        }
+      ]
+    },
+    {
+      "name": "LIO Pointcloud",
+      "image": "blank-background.png",
+      "index": 8,
+      "layers": [
+        {
+          "url": "https://ws.geoservices.lrc.gov.on.ca/arcgis5/rest/services/Elevation/FRI_DTM_SPL/ImageServer",
+          "type": "ARCGIS_EXPORT"
+        }
+      ]
+    },
+    {
+      "name": "Seismic Hazard",
+      "image": "Seismic_Hazard.png",
+      "index": 9,
+      "layers": [
+        {
+          "url": "https://maps.openquake.org/mapproxy/ghm/wmts/seismic-hazard-pga-g/webmercator/{z}/{x}/{y}.png",
+          "type": "XYZ"
+        }
+      ]
+    },
+    {
       "name": "Open Street Map",
       "image": "osm-topo.jpg",
-      "index": 4,
+      "index": 10,
       "layers": [
         {
           "url": "",
           "type": "OSM"
         }
       ]
-    },
-    {
-      "name": "None",
-      "image": "none.png",
-      "index": 5,
-      "layers": []
     }
   ],
-  "defaultTopoServiceName": "None",
+  "defaultTopoServiceName": "Blank Map",
   "imageryServices": [
     {
       "url": "https://maps.simcoe.ca/arcgis/rest/services/Public/Ortho_1954_Cache/MapServer/tile/{z}/{y}/{x}",

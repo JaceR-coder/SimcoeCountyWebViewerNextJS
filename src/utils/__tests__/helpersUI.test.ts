@@ -143,16 +143,12 @@ describe("helpersUI", () => {
   });
 
   describe("addAppStat", () => {
-    it("sends stat via fetch when collection is enabled", () => {
-      vi.stubEnv("NEXT_PUBLIC_COLLECT_APP_STATS", "true");
-      const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(() => Promise.resolve(new Response()));
-      useAppStore.setState({
-        config: { title: "TestApp" } as any,
-        appInfo: { name: "myapp", version: "1.2.3", homepage: "public" },
-      });
+    it("posts the stat to the py-Geomatics analytics beacon", () => {
+      const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+      useAppStore.setState({ config: { title: "TestApp" } as any });
 
       addAppStat("click", "button-pressed");
-      expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining("myapp-1.2.3-public"), expect.objectContaining({ method: "GET" }));
+      expect(fetchSpy).toHaveBeenCalledWith(expect.stringMatching(/\/geomatics\/analytics\/event$/), expect.objectContaining({ method: "POST" }));
       fetchSpy.mockRestore();
     });
   });

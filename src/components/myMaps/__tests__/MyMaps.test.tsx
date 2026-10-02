@@ -200,6 +200,7 @@ const mockMyMapsStore = {
   setDrawType: vi.fn(),
   updateItemLabel: vi.fn(),
   removeItem: vi.fn(),
+  deleteItemWithUndo: vi.fn(),
   setEditMode: vi.fn(),
   toolTipId: "tooltip-id",
   toolTipClass: "tooltip-class",
@@ -337,7 +338,7 @@ describe("MyMaps Component", () => {
 
       await user.click(screen.getByTestId("test-item-delete"));
 
-      expect(mockMyMapsStore.removeItem).toHaveBeenCalledWith("test-id");
+      expect(mockMyMapsStore.deleteItemWithUndo).toHaveBeenCalledWith("test-id");
       expect(mockEventStore.emit).toHaveBeenCalledWith("mymap-item-deleted", { id: "test-id" });
     });
 
@@ -432,9 +433,9 @@ describe("MyMaps Component", () => {
       // Test delete action
       await user.click(screen.getByTestId("test-show-options"));
       mockEventStore.emit.mockClear();
-      mockMyMapsStore.removeItem.mockClear();
+      mockMyMapsStore.deleteItemWithUndo.mockClear();
       await user.click(screen.getByTestId("popup-delete"));
-      expect(mockMyMapsStore.removeItem).toHaveBeenCalledWith("test-id");
+      expect(mockMyMapsStore.deleteItemWithUndo).toHaveBeenCalledWith("test-id");
       expect(mockEventStore.emit).toHaveBeenCalledWith("mymap-item-deleted", { id: "test-id" });
 
       // Test show geometry action

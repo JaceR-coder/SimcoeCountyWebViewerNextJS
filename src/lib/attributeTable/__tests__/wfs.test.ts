@@ -45,6 +45,12 @@ describe("pickImplicitSortField", () => {
     expect(pickImplicitSortField(fields)).toBeNull();
   });
 
+  it("falls back to a nillable id-named numeric column (PostGIS views report every column nillable)", () => {
+    const xml = SAMPLE_XSD.replace('name="OBJECTID" nillable="false"', 'name="gid" nillable="true"');
+    const fields = parseFeatureTypeSchema(xml);
+    expect(pickImplicitSortField(fields)).toBe("gid");
+  });
+
   it("returns null for a geometry-only feature type", () => {
     const xml = `<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:gml="http://www.opengis.net/gml/3.2">
       <xsd:element name="geom" type="gml:PointPropertyType"/>

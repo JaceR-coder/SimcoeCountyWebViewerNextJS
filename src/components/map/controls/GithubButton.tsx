@@ -8,13 +8,16 @@ interface GitHubButtonDisplayProps {
   map?: Map;
   href: string;
   children: React.ReactNode;
+  /** Icon before the label (default: GitHub mark) */
+  icon?: React.ReactNode;
+  onClick?: () => void;
 }
 
-export function GitHubButtonDisplay({ href, children }: GitHubButtonDisplayProps) {
+export function GitHubButtonDisplay({ href, children, icon, onClick }: GitHubButtonDisplayProps) {
   return (
     <div className="inline-block overflow-hidden font-sans leading-none whitespace-nowrap">
-      <a href={href} className="github-button-link" target="_blank" rel="noopener noreferrer">
-        <FaGithub size={16} className="inline-block align-text-top fill-current mr-1" />
+      <a href={href} className="github-button-link" target="_blank" rel="noopener noreferrer" onClick={onClick}>
+        {icon ?? <FaGithub size={16} className="inline-block align-text-top fill-current mr-1" />}
         <span>{children}</span>
       </a>
     </div>

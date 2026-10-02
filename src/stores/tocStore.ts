@@ -107,6 +107,9 @@ export interface TOCLayerGroup {
   panelOpen?: boolean; // Track if the group panel is open in the UI
   useRedFolder?: boolean; // Use red folder icons instead of default gray
   sourceOpen?: boolean; // Whether the source folder should be initially expanded
+  /** Position set by the source loader (e.g. the umbrella layer group's own order in GeoServer);
+   *  when present, the TOC keeps this order instead of sorting groups by name */
+  sortOrder?: number;
 }
 
 // Configuration for TOC sources from config.json
@@ -121,6 +124,13 @@ export interface TOCSource {
   primary: boolean;
   urlType: string;
   type: string;
+  /** urlType "group" (one umbrella layer group -> many TOC groups): display names that override
+   *  GeoServer's group titles, keyed by group name without workspace */
+  groupDisplayNames?: Record<string, string>;
+  /** urlType "group": sub-group names (without workspace) to leave out of the TOC */
+  excludeGroups?: string[];
+  /** urlType "group": sort the resulting TOC groups by display name (default: GeoServer's order) */
+  sortGroups?: boolean;
   useRedFolder?: boolean;
   open?: boolean;
   // Fields for type: "layer" (direct layer config, e.g. WMTS)

@@ -32,6 +32,18 @@ async function buildRequestConfig(baseConfig: AxiosRequestConfig = {}, useBearer
 /**
  * Fetches layer information from a URL
  */
+/**
+ * GeoServer's REST `resource.href` is an absolute URL on the real GeoServer host, which the
+ * browser can't fetch (CORS / needs the py-Geomatics token). When the layer URL itself went
+ * through a proxy path (e.g. /geoserver-proxy/rest/...), send the resource through the same one.
+ */
+export function proxiedResourceHref(layerUrl: string, resourceHref: string): string {
+  const layerRest = layerUrl.indexOf("/rest/");
+  const hrefRest = resourceHref.indexOf("/rest/");
+  if (layerRest === -1 || hrefRest === -1 || /^https?:\/\//i.test(layerUrl)) return resourceHref;
+  return layerUrl.slice(0, layerRest) + resourceHref.slice(hrefRest);
+}
+
 export async function fetchLayerInfo(url: string, params: Record<string, unknown> = {}, useBearerToken: boolean = false, _depth: number = 0): Promise<LayerInfoData | null> {
   try {
     // Prevent infinite loops - max 2 levels of resource fetching
@@ -61,7 +73,7 @@ export async function fetchLayerInfo(url: string, params: Record<string, unknown
     if ("layer" in response.data && response.data.layer) {
       const layerData = response.data.layer as { resource?: { href?: string } };
       if (layerData.resource && layerData.resource.href) {
-        const resourceHref = layerData.resource.href;
+        const resourceHref = proxiedResourceHref(url, layerData.resource.href);
         console.log(`Found layer with resource link: ${resourceHref}`);
 
         // Prevent circular references

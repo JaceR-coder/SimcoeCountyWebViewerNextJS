@@ -28,6 +28,7 @@ import GlobalURLModal from "@/components/common/GlobalURLModal";
 import DisclaimerModal from "@/components/common/DisclaimerModal";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import "@/styles/react-tabs.css";
+import { useImapAuthStore } from "@/stores/imapAuthStore";
 
 interface LayoutProps {
   children?: React.ReactNode;
@@ -52,14 +53,29 @@ export default function Layout({ children }: LayoutProps) {
   const { data: session, status: sessionStatus } = useSession();
   const { checkAllPermissions } = usePermissions();
 
+  // py-Geomatics accounts (config.authProvider === "pygeomatics"): load and keep refreshing the
+  // caller's login + layer-grant state for the profile button and TOC lock icons
+  const pyGeomaticsAuth = config?.authProvider === "pygeomatics";
+  const imapUserDisplayName = useImapAuthStore((s) => s.userDisplayName);
+  useEffect(() => {
+    if (!pyGeomaticsAuth) return;
+    const store = useImapAuthStore.getState();
+    store.start();
+    return () => store.stop();
+  }, [pyGeomaticsAuth]);
+  useEffect(() => {
+    if (pyGeomaticsAuth) setUserName(imapUserDisplayName);
+  }, [pyGeomaticsAuth, imapUserDisplayName, setUserName]);
+
   // Sync authenticated username into appStore for app stats
   useEffect(() => {
+    if (pyGeomaticsAuth) return;
     if (sessionStatus === "authenticated" && session?.user?.name) {
       setUserName(session.user.name);
     } else if (sessionStatus === "unauthenticated") {
       setUserName(null);
     }
-  }, [session, sessionStatus, setUserName]);
+  }, [session, sessionStatus, setUserName, pyGeomaticsAuth]);
 
   // --- User storage sync (restore localStorage from server for saveToServer users) ---
   const userStorageFiredRef = useRef(false);

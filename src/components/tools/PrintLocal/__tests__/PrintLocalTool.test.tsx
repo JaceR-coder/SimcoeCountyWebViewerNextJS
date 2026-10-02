@@ -119,7 +119,7 @@ describe("PrintLocalTool", () => {
 
       render(<PrintLocalTool onClose={mockOnClose} />);
 
-      const titleInput = screen.getByDisplayValue("County of Simcoe WebViewer");
+      const titleInput = screen.getByDisplayValue("Ministry of Transportation - iMAPS");
       expect(titleInput).toBeInTheDocument();
     });
 
@@ -166,7 +166,7 @@ describe("PrintLocalTool", () => {
 
       render(<PrintLocalTool onClose={mockOnClose} />);
 
-      const titleInput = screen.getByDisplayValue("County of Simcoe WebViewer");
+      const titleInput = screen.getByDisplayValue("Ministry of Transportation - iMAPS");
       await user.clear(titleInput);
       await user.type(titleInput, "My Custom Map");
 

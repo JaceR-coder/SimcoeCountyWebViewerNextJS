@@ -11,6 +11,7 @@ import { useLayerManagerStore } from "@/stores/layerManagerStore";
 import { useReportsStore } from "@/stores/reportsStore";
 import { useArcGISTokenStore } from "@/stores/arcgisTokenStore";
 import { getAxiosClient } from "@/lib/axiosInstance";
+import { wmsRequest } from "@/utils/mapFilter";
 import { getAccessToken } from "@/utils/auth";
 import IdentifyLayer from "@/components/Identify/IdentifyLayer";
 import { parseArcgisLayerUrl } from "@/lib/attributeTable/arcgis";
@@ -375,7 +376,8 @@ const Identify: React.FC<IdentifyProps> = ({ geometry, layerFilter }) => {
         const fullUrl = `${url}&feature_count=1000000`;
 
         const axiosClient = getAxiosClient(fullUrl);
-        const response = await axiosClient.get(fullUrl, { ...axiosConfig });
+        // POSTed when too long for a GET - a filtered layer carries its (possibly huge) CQL_FILTER here too
+        const response = await wmsRequest(axiosClient, fullUrl, { ...axiosConfig });
 
         let result = response.data;
 

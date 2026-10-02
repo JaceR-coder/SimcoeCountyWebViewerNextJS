@@ -73,6 +73,17 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
     >
       {TOAST_ICONS[toast.type]}
       <span className="text-sm">{toast.message}</span>
+      {toast.action && (
+        <button
+          className="btn btn-sm btn-outline"
+          onClick={() => {
+            toast.action!.onClick();
+            handleDismiss();
+          }}
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button className="btn btn-ghost btn-xs" onClick={handleDismiss} aria-label="Dismiss notification">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />

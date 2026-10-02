@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import { FaGripVertical } from "react-icons/fa";
 import { useMyMapsStore } from "@/stores/myMapsStore";
 import type { MyMapsItem as MyMapsItemType } from "@/types/myMaps";
+import { draggedItemId, isItemDrag, startItemDrag } from "./myMapsDnd";
 
 interface MyMapsItemProps {
   item: MyMapsItemType;
@@ -15,11 +17,42 @@ interface MyMapsItemProps {
   isEditing?: boolean;
 }
 
+const DELETE_ARM_TIMEOUT_MS = 2500;
+
 const MyMapsItem: React.FC<MyMapsItemProps> = ({ item, onLabelChange, onDelete, onShowOptions, onHoverStart, onHoverEnd, isEditing = false }) => {
   const { toggleItemVisibility } = useMyMapsStore();
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const [tempLabel, setTempLabel] = useState(item.label);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  // Click-to-arm delete (legacy MyMapsItem.jsx): the first click arms, a second click within
+  // DELETE_ARM_TIMEOUT_MS deletes - a single misclick can't remove an item
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (armTimer.current) clearTimeout(armTimer.current);
+  }, []);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  // Dropping another item on this row moves it next to this one - into this row's folder (or
+  // root), just before it (legacy MyMapsItem.jsx onItemDrop -> onReorderItem). More specific than
+  // a folder header / Root Items drop, so it stops the event there.
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!isItemDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    if (!isDragOver) setIsDragOver(true);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (!isItemDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const draggedId = draggedItemId(e);
+    if (draggedId && draggedId !== item.id) useMyMapsStore.getState().reorderItem(draggedId, item.id, item.folderId ?? null);
+  };
 
   // Sync tempLabel with item.label when it changes from external updates
   useEffect(() => {
@@ -55,6 +88,14 @@ const MyMapsItem: React.FC<MyMapsItemProps> = ({ item, onLabelChange, onDelete, 
 
   const handleDeleteClick = () => {
     if (isDeleting) return; // Prevent multiple clicks during animation
+
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      armTimer.current = setTimeout(() => setDeleteArmed(false), DELETE_ARM_TIMEOUT_MS);
+      return;
+    }
+    if (armTimer.current) clearTimeout(armTimer.current);
+    setDeleteArmed(false);
 
     setIsDeleting(true);
 
@@ -100,10 +141,27 @@ const MyMapsItem: React.FC<MyMapsItemProps> = ({ item, onLabelChange, onDelete, 
 
   return (
     <div
-      className={`flex items-center gap-1.5 py-1.5 px-2 border-b border-base-300 border-l-2 border-l-transparent bg-base-100 transition-all relative hover:bg-primary/5 hover:border-l-primary hover:translate-x-[2px] max-[768px]:py-1 max-[768px]:px-1.5 max-[768px]:gap-1 ${!item.visible ? "opacity-50" : ""} ${isEditing ? "bg-primary/10 !border-l-[3px] !border-l-primary" : ""} ${isDeleting ? "opacity-0 translate-x-2.5 scale-95 transition-[opacity,transform] duration-[400ms] ease-in-out pointer-events-none" : ""}`}
+      ref={rowRef}
+      data-testid="mymaps-item"
+      onDragOver={handleDragOver}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={handleDrop}
+      className={`${isDragOver ? "outline-2 outline-dashed outline-primary -outline-offset-2 " : ""}flex items-center gap-1.5 py-1.5 px-2 border-b border-base-300 border-l-2 border-l-transparent bg-base-100 transition-all relative hover:bg-primary/5 hover:border-l-primary hover:translate-x-[2px] max-[768px]:py-1 max-[768px]:px-1.5 max-[768px]:gap-1 ${!item.visible ? "opacity-50" : ""} ${isEditing ? "bg-primary/10 !border-l-[3px] !border-l-primary" : ""} ${isDeleting ? "opacity-0 translate-x-2.5 scale-95 transition-[opacity,transform] duration-[400ms] ease-in-out pointer-events-none" : ""}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
+      {/* Drag handle - move into a folder / back to root, or reorder */}
+      <span
+        draggable
+        onDragStart={(e) => startItemDrag(e, item.id, rowRef.current)}
+        onDragEnd={() => setIsDragOver(false)}
+        className="shrink-0 cursor-grab active:cursor-grabbing opacity-50 hover:opacity-100"
+        title="Drag to move to a folder or reorder"
+        aria-label={`Drag ${item.label}`}
+      >
+        <FaGripVertical size={12} />
+      </span>
+
       {/* Visibility checkbox */}
       <div className="shrink-0">
         <input type="checkbox" checked={item.visible} onChange={handleVisibilityToggle} title={item.visible ? "Hide item" : "Show item"} className="w-3.5 h-3.5 cursor-pointer" />
@@ -152,9 +210,11 @@ const MyMapsItem: React.FC<MyMapsItemProps> = ({ item, onLabelChange, onDelete, 
       <div className="flex gap-1 shrink-0 ml-[2px]">
         {/* Delete button */}
         <button
-          className="w-6 h-6 border-none bg-transparent rounded-[3px] cursor-pointer flex items-center justify-center transition-all p-0 shrink-0 hover:bg-base-200 hover:scale-105 active:scale-95 max-[768px]:w-[18px] max-[768px]:h-[18px]"
+          className={`w-6 h-6 border-none rounded-[3px] cursor-pointer flex items-center justify-center transition-all p-0 shrink-0 hover:scale-105 active:scale-95 max-[768px]:w-[18px] max-[768px]:h-[18px] ${deleteArmed ? "bg-error/30 ring-2 ring-error animate-pulse" : "bg-transparent hover:bg-base-200"}`}
           onClick={handleDeleteClick}
-          title="Delete item"
+          title={deleteArmed ? "Click again to delete" : "Delete item"}
+          aria-label={deleteArmed ? `Click again to delete ${item.label}` : `Delete ${item.label}`}
+          data-armed={deleteArmed || undefined}
           type="button"
         >
           <Image src="/images/myMaps/eraser.png" alt="Delete" width={16} height={16} />

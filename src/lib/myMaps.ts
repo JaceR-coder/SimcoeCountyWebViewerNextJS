@@ -33,82 +33,71 @@ export function computeJsonHash(jsonString: string): string {
 }
 
 /**
+ * Shared share-link store: web_search.tbl_mymaps in ner_master - the SAME table the legacy
+ * SimcoeCountyWebViewer saves to (through py-Geomatics' /imap/mymaps and, before that, the Node
+ * WebApi), so a My Maps ID saved in either app imports in the other. That table only has
+ * id / json / date_created, so the public save/load path below uses raw SQL against it rather
+ * than the tblMymaps Prisma model (NextJS's own public.tbl_mymaps, with email/name/jsonhash/
+ * lastimported), which only the NextAuth named-map routes (upsertByNameAndUser/getMyMapsByUser)
+ * still use. Only ever INSERTs new rows here - existing legacy rows are never modified.
+ */
+type SharedRow = { id: string; json: string | null; date_created: Date | null };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const toRecord = (row: SharedRow): MyMapsRecord => ({
+  id: row.id,
+  json: row.json,
+  date_created: row.date_created,
+  email: null,
+  name: null,
+  lastimported: null,
+  jsonhash: row.json === null ? null : computeJsonHash(row.json),
+});
+
+/**
  * MyMaps data access layer
  */
 export class MyMapsService {
   /**
-   * Insert a new MyMaps record into the database
-   * @param json The MyMaps JSON data to store
-   * @param email Optional user email (for authenticated saves)
-   * @param name Optional user-assigned name (for authenticated saves)
+   * Insert a new share-link record into the shared legacy table (see SharedRow above).
+   * email/name are accepted for signature compatibility but that table has no columns for them.
    * @returns Promise resolving to the inserted record ID
    */
-  static async insertMyMaps(
-    json: MyMapsSaveData,
-    email?: string,
-    name?: string
-  ): Promise<string> {
+  static async insertMyMaps(json: MyMapsSaveData): Promise<string> {
     const jsonString = JSON.stringify(json);
-    const jsonhash = computeJsonHash(jsonString);
-
-    const record = await prisma.tblMymaps.create({
-      data: {
-        json: jsonString,
-        date_created: new Date(),
-        jsonhash,
-        ...(email ? { email } : {}),
-        ...(name ? { name } : {}),
-      },
-    });
-
-    return record.id;
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO web_search.tbl_mymaps (json, date_created)
+      VALUES (${jsonString}, CURRENT_DATE)
+      RETURNING id::text AS id`;
+    return rows[0].id;
   }
 
   /**
-   * Retrieve a MyMaps record by ID
+   * Retrieve a share-link record by ID (saved by either app)
    */
   static async getMyMaps(id: string): Promise<MyMapsRecord | undefined> {
-    const record = await prisma.tblMymaps.findUnique({
-      where: { id },
-    });
-
-    if (!record) {
-      return undefined;
-    }
-
-    return {
-      id: record.id,
-      json: record.json,
-      date_created: record.date_created,
-      email: record.email,
-      name: record.name,
-      lastimported: record.lastimported,
-      jsonhash: record.jsonhash,
-    };
+    // Not a UUID can't match, and would make the ::uuid cast throw
+    if (!UUID_RE.test(id)) return undefined;
+    const rows = await prisma.$queryRaw<SharedRow[]>`
+      SELECT id::text AS id, json, date_created
+      FROM web_search.tbl_mymaps
+      WHERE id = ${id}::uuid`;
+    return rows[0] ? toRecord(rows[0]) : undefined;
   }
 
   /**
-   * Find the first record matching a given JSON hash.
-   * Used for public save deduplication.
+   * Find an existing share-link record with byte-identical JSON, for public save deduplication.
+   * The legacy table has no hash column, so the hash is computed in SQL - Postgres' sha256 over
+   * the UTF-8 text matches computeJsonHash().
    */
   static async findByHash(hash: string): Promise<MyMapsRecord | undefined> {
-    const record = await prisma.tblMymaps.findFirst({
-      where: { jsonhash: hash },
-    });
-
-    if (!record) {
-      return undefined;
-    }
-
-    return {
-      id: record.id,
-      json: record.json,
-      date_created: record.date_created,
-      email: record.email,
-      name: record.name,
-      lastimported: record.lastimported,
-      jsonhash: record.jsonhash,
-    };
+    const rows = await prisma.$queryRaw<SharedRow[]>`
+      SELECT id::text AS id, json, date_created
+      FROM web_search.tbl_mymaps
+      WHERE json IS NOT NULL AND encode(sha256(convert_to(json, 'UTF8')), 'hex') = ${hash}
+      LIMIT 1`;
+    return rows[0] ? toRecord(rows[0]) : undefined;
   }
 
   /**
@@ -170,13 +159,10 @@ export class MyMapsService {
   }
 
   /**
-   * Update the lastimported timestamp for a record.
-   * Called when a record is retrieved/imported.
+   * Was: update lastimported. The shared legacy table has no such column, so this is a no-op kept
+   * so callers (the public [id] route) don't need to change.
    */
-  static async updateLastImported(id: string): Promise<void> {
-    await prisma.tblMymaps.update({
-      where: { id },
-      data: { lastimported: new Date() },
-    });
+  static async updateLastImported(_id: string): Promise<void> {
+    void _id;
   }
 }

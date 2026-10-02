@@ -27,6 +27,7 @@ const ExternalServicesTool = lazy(() => import("@/components/tools/ExternalServi
 const AddLayerTool = lazy(() => import("@/components/tools/AddLayer/AddLayerTool"));
 const AvailableMapsTool = lazy(() => import("@/components/tools/AvailableMaps/AvailableMapsTool"));
 const LHRSTool = lazy(() => import("@/components/tools/LHRS/LHRSTool"));
+const SpatialReportTool = lazy(() => import("@/components/tools/SpatialReport/SpatialReportTool"));
 
 // Secure Road Closures tool
 const RoadClosuresTool = lazy(() =>
@@ -52,6 +53,10 @@ const TOC = lazy(() => import("@/components/TOC/TOC"));
 
 // Lazy load MyMaps component
 const MyMaps = lazy(() => import("@/components/myMaps/MyMaps"));
+
+// Tools shown under "Core Tools" (everything else falls under "Other Tools"), IN THIS ORDER.
+// Matched by component name rather than config order, like the legacy i-Map's SidebarItemList.
+const CORE_TOOL_ORDER = ["SpatialReport", "Measure", "LHRS", "LHRSMTO", "Coordinates", "CoordinatesMTO"];
 
 // Tool mapping for dynamic loading
 const toolComponents: Record<
@@ -79,6 +84,7 @@ const toolComponents: Record<
   AddLayer: AddLayerTool,
   AvailableMaps: AvailableMapsTool,
   LHRS: LHRSTool,
+  SpatialReport: SpatialReportTool,
 };
 
 // Theme mapping for dynamic loading
@@ -386,35 +392,57 @@ export default function Sidebar() {
     }
   };
 
-  const renderDefaultToolsContent = () => (
-    <div className="flex flex-col gap-px flex-auto min-h-0 max-h-full overflow-y-auto">
-      {visibleTools.map((tool) => (
-        <div
-          key={tool.id}
-          className={`flex items-start px-1.5 pb-1.5 pt-px border border-transparent border-b-base-300 rounded-sm cursor-pointer bg-base-100 select-none min-h-[72px] mt-1.5 text-base-content hover:border-[#90b5d5] hover:bg-[image:var(--sc-gradient-hover)] ${
-            activeTool === tool.id ? "bg-[image:var(--sc-gradient-active)] !border-[#90b5d5]" : ""
-          }`}
-          onClick={() => handleSidebarItemClick(tool.component || tool.name, tool.name, "tools")}
-        >
-          <div className="relative w-[60px] h-[60px] shrink-0 flex items-center justify-center bg-[image:linear-gradient(to_bottom,#f2f5f6,#e6e6e6)] dark:bg-[image:linear-gradient(to_bottom,#252d37,#1d232a)] rounded-sm border border-base-300 mr-4 text-center pt-1.5">
-            {tool.secure && <FaLock className="absolute top-0.5 left-0.5 text-[10px] text-base-content/50 drop-shadow-sm" />}
-            <Image src={`/images/${tool.imageName}`} alt={tool.name || ""} width={48} height={48} className="w-[48px] h-[48px] object-contain" />
-          </div>
-          <div className="flex-1 flex flex-col justify-start min-h-[60px]">
-            <div className="text-[15px] font-bold text-base-content/80 mb-1.5 leading-tight">{tool.name}</div>
-            <div className="text-[10px] text-base-content/70 leading-snug text-left pl-[18px] pr-1 bg-[url('/images/arrow_curve.gif')] bg-no-repeat">{tool.description}</div>
-          </div>
-        </div>
-      ))}
+  const renderToolItem = (tool: (typeof visibleTools)[number]) => (
+    <div
+      key={tool.id}
+      className={`flex items-start px-1.5 pb-1.5 pt-px border border-transparent border-b-base-300 rounded-sm cursor-pointer bg-base-100 select-none min-h-[72px] shrink-0 mt-1.5 text-base-content hover:border-[#90b5d5] hover:bg-[image:var(--sc-gradient-hover)] ${
+        activeTool === tool.id ? "bg-[image:var(--sc-gradient-active)] !border-[#90b5d5]" : ""
+      }`}
+      onClick={() => handleSidebarItemClick(tool.component || tool.name, tool.name, "tools")}
+    >
+      <div className="relative w-[60px] h-[60px] shrink-0 flex items-center justify-center bg-[image:linear-gradient(to_bottom,#f2f5f6,#e6e6e6)] dark:bg-[image:linear-gradient(to_bottom,#252d37,#1d232a)] rounded-sm border border-base-300 mr-4 text-center pt-1.5">
+        {tool.secure && <FaLock className="absolute top-0.5 left-0.5 text-[10px] text-base-content/50 drop-shadow-sm" />}
+        <Image src={`/images/${tool.imageName}`} alt={tool.name || ""} width={48} height={48} className="w-[48px] h-[48px] object-contain" />
+      </div>
+      <div className="flex-1 flex flex-col justify-start min-h-[60px]">
+        <div className="text-[15px] font-bold text-base-content/80 mb-1.5 leading-tight">{tool.name}</div>
+        <div className="text-[10px] text-base-content/70 leading-snug text-left pl-[18px] pr-1 bg-[url('/images/arrow_curve.gif')] bg-no-repeat">{tool.description}</div>
+      </div>
     </div>
   );
+
+  const renderToolSectionHeader = (title: string, first: boolean) => (
+    <div className={`text-[11px] font-bold uppercase tracking-[0.5px] text-base-content/50 px-[5px] pt-1 pb-0.5 border-b border-base-300 ${first ? "" : "mt-2"}`}>{title}</div>
+  );
+
+  const renderDefaultToolsContent = () => {
+    const toolKey = (tool: (typeof visibleTools)[number]) => tool.component || tool.name;
+    const coreTools = visibleTools.filter((tool) => CORE_TOOL_ORDER.includes(toolKey(tool))).sort((a, b) => CORE_TOOL_ORDER.indexOf(toolKey(a)) - CORE_TOOL_ORDER.indexOf(toolKey(b)));
+    const otherTools = visibleTools.filter((tool) => !CORE_TOOL_ORDER.includes(toolKey(tool)));
+    return (
+      <div className="flex flex-col gap-px flex-auto min-h-0 max-h-full overflow-y-auto">
+        {coreTools.length > 0 && (
+          <>
+            {renderToolSectionHeader("Core Tools", true)}
+            {coreTools.map(renderToolItem)}
+          </>
+        )}
+        {otherTools.length > 0 && (
+          <>
+            {renderToolSectionHeader("Other Tools", coreTools.length === 0)}
+            {otherTools.map(renderToolItem)}
+          </>
+        )}
+      </div>
+    );
+  };
 
   const renderDefaultThemesContent = () => (
     <div className="flex flex-col gap-px flex-auto min-h-0 max-h-full overflow-y-auto">
       {visibleThemes.map((theme) => (
         <div
           key={theme.id}
-          className={`flex items-start px-1.5 pb-1.5 pt-px border border-transparent border-b-base-300 rounded-sm cursor-pointer bg-base-100 select-none min-h-[72px] mt-1.5 text-base-content hover:border-[#90b5d5] hover:bg-[image:var(--sc-gradient-hover)] ${
+          className={`flex items-start px-1.5 pb-1.5 pt-px border border-transparent border-b-base-300 rounded-sm cursor-pointer bg-base-100 select-none min-h-[72px] shrink-0 mt-1.5 text-base-content hover:border-[#90b5d5] hover:bg-[image:var(--sc-gradient-hover)] ${
             activeTheme === theme.id ? "bg-[image:var(--sc-gradient-active)] !border-[#90b5d5]" : ""
           }`}
           onClick={() => handleSidebarItemClick(theme.component || theme.name, theme.name, "themes")}

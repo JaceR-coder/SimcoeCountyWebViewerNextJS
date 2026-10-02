@@ -111,7 +111,7 @@ describe("PrintTool", () => {
 
       const titleInput = screen.getByPlaceholderText("Enter map title");
       expect(titleInput).toBeInTheDocument();
-      expect(titleInput).toHaveValue("County of Simcoe - Web Map");
+      expect(titleInput).toHaveValue("Ministry of Transportation - iMAPS");
     });
 
     it("renders paper size dropdown", () => {
@@ -324,7 +324,7 @@ describe("PrintTool", () => {
 
       const { rerender } = render(<PrintTool onClose={mockOnClose} />);
 
-      expect(screen.getByPlaceholderText("Enter map title")).toHaveValue("County of Simcoe - Web Map");
+      expect(screen.getByPlaceholderText("Enter map title")).toHaveValue("Ministry of Transportation - iMAPS");
 
       rerender(
         <PrintTool

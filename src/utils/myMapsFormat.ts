@@ -37,7 +37,7 @@
  */
 
 import { Style } from "ol/style";
-import type { MyMapsItem, StyleJSON } from "@/stores/myMapsStore";
+import type { MyMapsFolder, MyMapsItem, StyleJSON } from "@/stores/myMapsStore";
 
 // ─── Style conversion ───────────────────────────────────────────────────────
 
@@ -230,6 +230,10 @@ export interface SavePayloadInput {
   drawStyle: Style | StyleJSON | null;
   toolTipClass: string;
   toolTipId: string;
+  /** Legacy SimcoeCountyWebViewer My Maps folders ([{id, label, panelOpen}]) */
+  folders?: MyMapsFolder[];
+  /** Folder new drawings land in, or null for root */
+  activeFolderId?: string | null;
 }
 
 /**
@@ -242,6 +246,8 @@ export function buildSavePayload(input: SavePayloadInput): Record<string, unknow
     const serializedItem: Record<string, unknown> = {
       id: item.id,
       label: item.label,
+      // Legacy writes folderId on every item, null for root (see its MyMaps.jsx addNewItem)
+      folderId: item.folderId ?? null,
       labelVisible: item.labelVisible,
       labelStyle: item.labelStyle ?? null,
       labelRotation: item.labelRotation,
@@ -274,6 +280,8 @@ export function buildSavePayload(input: SavePayloadInput): Record<string, unknow
     drawOpacity: input.drawOpacity,
     drawStyle: serializeStyle(input.drawStyle),
     items,
+    folders: (input.folders ?? []).map((f) => ({ id: f.id, label: f.label, panelOpen: f.panelOpen !== false })),
+    activeFolderId: input.activeFolderId ?? null,
     toolTipClass: input.toolTipClass,
     toolTipId: input.toolTipId,
     // Both keys are emitted for cross-app compatibility.

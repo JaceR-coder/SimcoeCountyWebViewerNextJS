@@ -326,3 +326,21 @@ describe("layerInfo", () => {
     });
   });
 });
+
+describe("proxiedResourceHref", () => {
+  it("routes GeoServer's absolute resource href through the same proxy path", async () => {
+    const { proxiedResourceHref } = await import("@/lib/layerInfo");
+    expect(
+      proxiedResourceHref(
+        "/geoserver-proxy/rest/layers/lhrs_routes.json",
+        "https://ops-mz0075jf.cihs.ad.gov.on.ca/geoserver/rest/workspaces/other_regional_data/featuretypes/lhrs_routes.json",
+      ),
+    ).toBe("/geoserver-proxy/rest/workspaces/other_regional_data/featuretypes/lhrs_routes.json");
+  });
+
+  it("leaves absolute layer URLs (direct GeoServer / ArcGIS) alone", async () => {
+    const { proxiedResourceHref } = await import("@/lib/layerInfo");
+    const href = "https://gs.example.com/geoserver/rest/workspaces/ws/featuretypes/a.json";
+    expect(proxiedResourceHref("https://gs.example.com/geoserver/rest/layers/a.json", href)).toBe(href);
+  });
+});

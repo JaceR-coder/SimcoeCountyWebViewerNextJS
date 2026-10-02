@@ -122,7 +122,8 @@ describe("myMapsStore", () => {
 
       const state = useMyMapsStore.getState();
       expect(state.items).toHaveLength(1);
-      expect(state.items[0]).toEqual(newItem);
+      // No active folder: lands at root
+      expect(state.items[0]).toEqual({ ...newItem, folderId: null });
     });
 
     it("should update existing item", () => {

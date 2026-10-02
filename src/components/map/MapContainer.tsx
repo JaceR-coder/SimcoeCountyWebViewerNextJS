@@ -14,6 +14,9 @@ import { useUrlParameterContextOptional } from "@/contexts/UrlParameterContext";
 import { getPublicPath } from "@/utils/getPublicPath";
 import { getStorageItem } from "@/utils/storage";
 import { isMobile } from "@/utils/helpersBrowser";
+import { GEOMATICS_PATH } from "@/stores/imapAuthStore";
+import { addAppStat } from "@/lib/appStats";
+import { FaExternalLinkAlt } from "react-icons/fa";
 
 // OpenLayers imports
 import "ol/ol.css";
@@ -907,8 +910,14 @@ export default function MapContainer() {
   const GitHubButtonWrapper = useCallback(({ map }: { map: Map }) => {
     return (
       <Suspense fallback={<ControlLoadingPlaceholder />}>
-        <LazyGitHubButtonDisplay map={map} href="https://github.com/county-of-simcoe-gis">
-          View on GitHub
+        {/* Legacy i-Map repurposed this control as a py-Geomatics link; same-origin via the /geomatics rewrite */}
+        <LazyGitHubButtonDisplay
+          map={map}
+          href={`${GEOMATICS_PATH}/`}
+          icon={<FaExternalLinkAlt size={12} className="inline-block fill-current mr-1.5" />}
+          onClick={() => addAppStat("PyGeomatics", "Button")}
+        >
+          Open PyGeomatics
         </LazyGitHubButtonDisplay>
       </Suspense>
     );

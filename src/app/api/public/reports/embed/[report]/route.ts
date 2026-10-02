@@ -1,5 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setReportParameters } from "@/lib/secure/reports/powerbiEmbed";
+
+// The real implementation (@/lib/secure/reports/powerbiEmbed) lives in the private
+// SimcoeCountyWebViewerSecure repo and was never published here - importing it broke
+// `next build`. Power BI property reports are County of Simcoe-only, so this build reports
+// the feature as unavailable instead.
+async function setReportParameters(_report: string, _params: unknown[]): Promise<string> {
+  void _report;
+  void _params;
+  throw new ReportsEmbedUnavailableError();
+}
+
+class ReportsEmbedUnavailableError extends Error {}
 
 /**
  * POST /api/public/reports/embed/:report
@@ -28,6 +39,9 @@ export async function POST(
     // Return the batchId as a plain JSON string (matches old API response format)
     return NextResponse.json(batchId);
   } catch (error) {
+    if (error instanceof ReportsEmbedUnavailableError) {
+      return NextResponse.json({ error: "Power BI reports are not available in this build" }, { status: 501 });
+    }
     console.error("Error in reports embed handler:", error);
     return NextResponse.json({ error: "Failed to set report parameters" }, { status: 500 });
   }

@@ -17,6 +17,8 @@ export interface AppConfig {
   // Basic app settings
   useMapConfigApi: boolean;
   mapId: string;
+  /** "pygeomatics": accounts/layer permissions from py-Geomatics (see imapAuthStore). Default: NextAuth/Azure AD */
+  authProvider?: "pygeomatics" | "azuread";
   headerLogoImageName: string;
   logoOverlayText?: string;
   title: string;

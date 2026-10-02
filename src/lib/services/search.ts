@@ -1,26 +1,27 @@
 /**
- * Search service — ported from SimcoeCountyWebApi/helpers/search.js
- * Provides search against the tbl_search table with fallbacks to ESRI geocoder and OSM.
+ * Search service - backed by the legacy i-Map's search index, web_search.tbl_search_ts_mv in
+ * ner_master (~1.5M addresses, lots/concessions, title records, chainage, MTO structures, contracts,
+ * LHRS points, ... across ~37 types), with the same ranked query the legacy SimcoeCountyWebApi
+ * helpers/search.js runs, plus an Open Street Map fallback.
+ *
+ * Replaces this app's original Simcoe County version, which queried public.tbl_search in a
+ * "tabular" database that doesn't exist here, and a Simcoe-only ESRI address geocoder. Map layers,
+ * tools and themes are still matched client-side in components/Search.tsx.
+ *
+ * Maintained on the database side: the materialized view unions 16 web_search source views and is
+ * refreshed there; this module only reads it (and web_search.tbl_search_layers).
  */
-import { pgTabular } from "@/lib/database/connections";
+import { prisma } from "@/lib/prisma";
 import searchConfig from "./searchConfig.json";
 
 const viewBox = searchConfig.OSMViewBox;
-const useESRIGeocoder = searchConfig.useESRIGeocoder;
 const useOSMSearch = searchConfig.useOSMSearch;
-
-const geocodeUrl = (limit: number, keywords: string) =>
-  `https://maps.simcoe.ca/arcgis/rest/services/SimcoeUtilities/AddressLocator/GeocodeServer/findAddressCandidates?${new URLSearchParams({
-    f: "json",
-    maxLocations: String(limit),
-    outFields: "House,StreetName,SufType,City",
-    Street: keywords,
-  }).toString()}`;
 
 const osmUrlWithViewBox = (vb: string, limit: number, keywords: string) =>
   `https://nominatim.openstreetmap.org/search?${new URLSearchParams({
     format: "json",
     addressdetails: "1",
+    countrycodes: "ca",
     viewbox: vb,
     bounded: "1",
     limit: String(limit),
@@ -32,15 +33,21 @@ const osmUrlWithViewBox = (vb: string, limit: number, keywords: string) =>
 export interface SearchRow {
   name: string;
   type: string;
-  municipality: string;
+  /** Second line of the result, e.g. "Pavement Section : FROM - Hwy 560 TO - ..." */
+  description?: string | null;
+  municipality?: string;
   location_id: string | null;
   x?: number;
   y?: number;
   place_id?: string;
-  priority?: number;
   geojson?: string;
   geojson_point?: string;
+  geojson_extent?: string;
+  /** "workspace:layer@TOC group,..." to turn on for this result type (web_search.tbl_search_layers) */
+  assoc_layers?: string | null;
 }
+
+const MAX_LIMIT = 100;
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -49,39 +56,24 @@ function toTitleCase(str: string | undefined): string {
   return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase());
 }
 
+/**
+ * to_tsquery_partial() splits on whitespace and joins with & - tsquery operators typed by the user
+ * (& | ! ( ) : * ' < > \) would make it throw a syntax error instead of just not matching.
+ */
+export const toTsQueryText = (value: string) => value.replace(/[&|!():*'<>\\]/g, " ").replace(/\s+/g, " ").trim();
+
 async function getJSON<T = unknown>(url: string, init?: RequestInit): Promise<T> {
   try {
     const headers = new Headers(init?.headers);
-
-    if (!headers.has("Accept")) {
-      headers.set("Accept", "application/json");
-    }
-
-    const response = await fetch(url, {
-      ...init,
-      headers,
-    });
-
-    const body = await response.text();
-    const trimmedBody = body.trim();
-
+    if (!headers.has("Accept")) headers.set("Accept", "application/json");
+    const response = await fetch(url, { ...init, headers });
+    const body = (await response.text()).trim().replace(/^﻿/, "");
     if (!response.ok) {
       console.error(`getJSON request failed (${response.status}): ${url}`);
       return {} as T;
     }
-
-    if (!trimmedBody) {
-      return {} as T;
-    }
-
-    const normalizedBody = trimmedBody.replace(/^\uFEFF/, "");
-
-    if (!normalizedBody.startsWith("{") && !normalizedBody.startsWith("[")) {
-      console.error(`getJSON non-JSON response from ${url}: ${normalizedBody.slice(0, 120)}`);
-      return {} as T;
-    }
-
-    return JSON.parse(normalizedBody) as T;
+    if (!body.startsWith("{") && !body.startsWith("[")) return {} as T;
+    return JSON.parse(body) as T;
   } catch (error) {
     console.error("getJSON error:", error);
     return {} as T;
@@ -91,167 +83,102 @@ async function getJSON<T = unknown>(url: string, init?: RequestInit): Promise<T>
 // ── Search functions ────────────────────────────────────────────────
 
 /**
- * Main search — address + non-address + geocoder/OSM fallbacks.
+ * Main search - ranked index search, then Open Street Map when that finds nothing (or when asked
+ * for). `muni` is accepted for API compatibility; the index has no municipality column.
  */
-export async function search(keywords: string, type: string | undefined, muni: string | undefined, limit: number = 10): Promise<SearchRow[]> {
+export async function search(keywords: string, type: string | undefined, _muni: string | undefined, limit: number = 10): Promise<SearchRow[]> {
+  void _muni;
   try {
-    if (keywords.length < 2) return [];
+    if (!keywords || keywords.trim().length < 2) return [];
+    const safeLimit = Math.min(Math.max(1, Number.isFinite(limit) ? limit : 10), MAX_LIMIT);
+    const typeFilter = !type || type === "All" || type === "undefined" ? null : type;
 
-    const parts = keywords.split(" ");
-    const isFirstWordNumeric = !isNaN(Number(parts[0]));
+    const results: SearchRow[] = typeFilter === "Open Street Map" ? [] : await searchIndex(keywords.trim(), typeFilter, safeLimit);
 
-    const allValues: SearchRow[] = [];
-    let addresses: SearchRow[] = [];
-
-    // First word is numeric → assume address
-    if (isFirstWordNumeric) {
-      addresses = await searchAddress(keywords, muni, type, limit);
-
-      // Fallback to ESRI geocoder
-      if (useESRIGeocoder && addresses.length === 0 && (type === "Address" || type === undefined || type === "All")) {
-        const geocodeResult = await getJSON<{ candidates?: GeocodeCandidateRaw[] }>(geocodeUrl(limit, keywords));
-        if (geocodeResult?.candidates) {
-          for (const candidate of geocodeResult.candidates) {
-            if (candidate.score > 10) {
-              addresses.push({
-                name: toTitleCase(candidate.address),
-                type: "Geocode",
-                municipality: toTitleCase(candidate.attributes?.City),
-                location_id: null,
-                x: candidate.location?.x,
-                y: candidate.location?.y,
-              });
-            }
-          }
-        }
-      }
+    // Legacy behaviour: OSM fills in only when the index found nothing, or when asked for directly
+    if ((useOSMSearch && results.length === 0 && (!typeFilter || typeFilter === "Open Street Map")) || typeFilter === "Open Street Map") {
+      results.push(...(await searchOsm(keywords, safeLimit - results.length)));
     }
-
-    allValues.push(...addresses);
-
-    // Fill remaining with non-address results
-    if (allValues.length < limit) {
-      const nonAddresses = await searchNonAddress(keywords, type, muni, limit);
-      allValues.push(...nonAddresses);
-    }
-
-    // Fill with OSM if still empty and appropriate
-    if ((useOSMSearch && allValues.length === 0) || type === "Open Street Map" || (allValues.length === 0 && type === "All")) {
-      const numRecords = limit - allValues.length;
-      const osmPlaces = await searchOsm(keywords, type, numRecords);
-      allValues.push(...osmPlaces);
-    }
-
-    return allValues;
-  } catch {
+    return results;
+  } catch (error) {
+    console.error("Search error:", error);
     return [];
   }
 }
 
 /**
- * Look up a single search row by location_id.
+ * The legacy ranked query (SimcoeCountyWebApi helpers/search.js _search): short strings are a quick
+ * prefix match; 5+ characters rank prefix > contains > description contains > full-text.
+ */
+async function searchIndex(value: string, type: string | null, limit: number): Promise<SearchRow[]> {
+  if (value.length < 5) {
+    return prisma.$queryRaw<SearchRow[]>`
+      SELECT title AS "name", description, type, location_id::text AS location_id
+      FROM web_search.tbl_search_ts_mv
+      WHERE title ILIKE ${value} || '%'
+        AND (${type}::text IS NULL OR type = ${type})
+      ORDER BY "name"
+      LIMIT ${limit}`;
+  }
+
+  const tsText = toTsQueryText(value);
+  if (!tsText) return [];
+  return prisma.$queryRaw<SearchRow[]>`
+    SELECT title AS "name", description, type, location_id::text AS location_id
+    FROM (
+      SELECT title, description, type, location_id,
+        CASE WHEN title ILIKE ${value} || '%' THEN 1
+             WHEN title ILIKE '%' || ${value} || '%' THEN 0.9
+             WHEN description ILIKE '%' || ${value} || '%' THEN 0.8
+             ELSE ts_rank_cd(ts, query) END AS rank
+      FROM web_search.tbl_search_ts_mv, public.to_tsquery_partial(${tsText}) query
+      WHERE (ts @@ query OR title ILIKE '%' || ${value} || '%' OR description ILIKE '%' || ${value} || '%')
+        AND (${type}::text IS NULL OR type = ${type})
+    ) ranked
+    ORDER BY rank DESC, "name"
+    LIMIT ${limit}`;
+}
+
+/**
+ * One result's full geometry (EPSG:3857 GeoJSON strings) and the layers its type turns on.
  */
 export async function searchById(id: string): Promise<SearchRow | null> {
-  const sql = `SELECT * FROM public.tbl_search WHERE location_id = $1;`;
-  const rows = await pgTabular.selectAllWithValues<SearchRow>(sql, [id]);
+  if (!/^\d+$/.test(id)) return null;
+  const rows = await prisma.$queryRaw<SearchRow[]>`
+    SELECT s.title AS "name", s.description, s.type, s.location_id::text AS location_id,
+           s.geojson, s.geojson_point, s.geojson_extent, l.assoc_layers
+    FROM web_search.tbl_search_ts_mv s
+    LEFT JOIN web_search.tbl_search_layers l ON l.type = s.type
+    WHERE s.id = ${id}::bigint
+    LIMIT 1`;
   return rows[0] ?? null;
 }
 
 /**
- * Get distinct search types from tbl_search.
+ * The index's result types, for the type filter dropdown (legacy getSearchTypes).
  */
 export async function getSearchTypes(): Promise<string[]> {
-  const sql = "SELECT DISTINCT(type) FROM public.tbl_search ORDER BY type";
-  const rows = await pgTabular.selectAll<{ type: string }>(sql);
+  const rows = await prisma.$queryRaw<{ type: string }[]>`SELECT type FROM web_search.tbl_search_layers WHERE type IS NOT NULL ORDER BY type`;
   return rows.map((r) => r.type);
 }
 
-// ── Internal queries ────────────────────────────────────────────────
+// ── Open Street Map ─────────────────────────────────────────────────
 
-async function searchAddress(value: string, muni: string | undefined, type: string | undefined, limit: number = 10): Promise<SearchRow[]> {
-  if (type === "All" || type === "undefined") type = undefined;
-
-  const values: unknown[] = [value];
-  let sql = `SELECT DISTINCT name, type, municipality, location_id FROM public.tbl_search WHERE name ILIKE $1 || '%' AND type = 'Address'`;
-
-  if (muni && muni !== "undefined") {
-    sql += " AND LOWER(municipality) = LOWER($2)";
-    values.push(muni);
-  }
-
-  if (type && type !== "undefined") {
-    const idx = values.length + 1;
-    sql += ` AND type = $${idx}`;
-    values.push(type);
-  }
-
-  sql += ` LIMIT ${limit};`;
-
-  return pgTabular.selectAllWithValues<SearchRow>(sql, values);
-}
-
-async function searchNonAddress(value: string, type: string | undefined, muni: string | undefined, limit: number = 10): Promise<SearchRow[]> {
-  if (type === "undefined" || type === "All") type = undefined;
-  if (muni === "undefined") muni = undefined;
-
-  const values: unknown[] = [value, limit];
-  let sql = "";
-
-  if (!muni && !type) {
-    sql = `SELECT DISTINCT name, type, municipality, location_id, priority FROM public.tbl_search WHERE name ILIKE $1 || '%' AND type <> 'Address' ORDER BY priority LIMIT $2;`;
-  } else if (muni && !type) {
-    values.push(muni);
-    sql = `SELECT DISTINCT name, type, municipality, location_id, priority FROM public.tbl_search WHERE name ILIKE $1 || '%' AND type <> 'Address' AND LOWER(municipality) = LOWER($3) ORDER BY priority LIMIT $2;`;
-  } else if (muni && type) {
-    values.push(muni);
-    values.push(type);
-    sql = `SELECT name, type, municipality, location_id FROM public.tbl_search WHERE name ILIKE '%' || $1 || '%' AND type = $4 AND LOWER(municipality) = LOWER($3) AND type <> 'Address' LIMIT $2;`;
-  } else if (!muni && type) {
-    values.push(type);
-    sql = `SELECT name, type, municipality, location_id FROM public.tbl_search WHERE name ILIKE '%' || $1 || '%' AND type = $3 AND type <> 'Address' LIMIT $2;`;
-  }
-
-  return pgTabular.selectAllWithValues<SearchRow>(sql, values);
-}
-
-async function searchOsm(keywords: string, type: string | undefined, limit: number = 10): Promise<SearchRow[]> {
-  if (type === "undefined") type = undefined;
-  if (type !== "All" && type !== "Open Street Map") return [];
-
-  const osmUrl = osmUrlWithViewBox(viewBox, limit, keywords);
-  const osmResult = await getJSON<OsmResult[]>(osmUrl, {
-    headers: {
-      "User-Agent": "SimcoeCountyWebViewerNextJS",
-      "Accept-Language": "en",
-    },
+async function searchOsm(keywords: string, limit: number = 10): Promise<SearchRow[]> {
+  if (limit <= 0) return [];
+  const osmResult = await getJSON<OsmResult[]>(osmUrlWithViewBox(viewBox, limit, keywords), {
+    headers: { "User-Agent": "SimcoeCountyWebViewerNextJS", "Accept-Language": "en" },
   });
-  const osmPlaces: SearchRow[] = [];
-
-  if (Array.isArray(osmResult) && osmResult.length > 0) {
-    for (const osm of osmResult) {
-      const city = osm.address?.city ?? osm.address?.town ?? "";
-      osmPlaces.push({
-        name: osm.display_name,
-        type: toTitleCase(osm.type + " - Open Street Map"),
-        municipality: toTitleCase(city),
-        location_id: null,
-        x: parseFloat(osm.lon),
-        y: parseFloat(osm.lat),
-        place_id: osm.place_id,
-      });
-    }
-  }
-
-  return osmPlaces;
-}
-
-// ── External API response shapes ────────────────────────────────────
-
-interface GeocodeCandidateRaw {
-  address: string;
-  score: number;
-  location: { x: number; y: number };
-  attributes: { City: string };
+  if (!Array.isArray(osmResult)) return [];
+  return osmResult.map((osm) => ({
+    name: osm.display_name,
+    type: toTitleCase(osm.type + " - Open Street Map"),
+    municipality: toTitleCase(osm.address?.city ?? osm.address?.town ?? ""),
+    location_id: null,
+    x: parseFloat(osm.lon),
+    y: parseFloat(osm.lat),
+    place_id: osm.place_id,
+  }));
 }
 
 interface OsmResult {

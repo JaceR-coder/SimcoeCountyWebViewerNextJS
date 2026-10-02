@@ -5,6 +5,8 @@ import PanelComponent from "@/components/PanelComponent";
 import { useMapStore, type ControlVisibility } from "@/stores/mapStore";
 import { getStorageKeys, getStorageItem, removeStorageItem } from "@/utils/storage";
 import { flushUserStorage } from "@/utils/userStorage";
+import { useAppStore } from "@/stores/appStore";
+import { getLeftClickIdentify, setLeftClickIdentify } from "@/utils/leftClickIdentify";
 
 interface SettingsToolProps {
   name?: string;
@@ -39,7 +41,7 @@ const controlGroups = {
     { key: "grid" as keyof ControlVisibility, label: "Grid", tooltip: "Toggles a coordinate grid overlay on the map" },
   ],
   other: [
-    { key: "gitHubButton" as keyof ControlVisibility, label: "GitHub Button", tooltip: "Shows a link to the project's GitHub repository" },
+    { key: "gitHubButton" as keyof ControlVisibility, label: "PyGeomatics Button", tooltip: "Shows a link that opens PyGeomatics in a new tab" },
     { key: "attributeTable" as keyof ControlVisibility, label: "Attribute Table", tooltip: "Shows an attribute table for querying layer data" },
     { key: "shareMap" as keyof ControlVisibility, label: "Share Map", tooltip: "Shows a button to copy a shareable URL of the current map view" },
   ],
@@ -49,6 +51,8 @@ export default function SettingsTool({ name = "Settings", helpLink, hideHeader =
   const { controlVisibility, setControlVisibility, resetControlVisibilityToDefaults } = useMapStore();
   const [localStorageItems, setLocalStorageItems] = useState<LocalStorageItem[]>([]);
   const [showClearAllModal, setShowClearAllModal] = useState(false);
+  const appConfig = useAppStore((s) => s.config);
+  const [leftClickIdentify, setLeftClickIdentifyState] = useState(() => getLeftClickIdentify(appConfig));
 
   // Load localStorage items on mount
   useEffect(() => {
@@ -79,6 +83,13 @@ export default function SettingsTool({ name = "Settings", helpLink, hideHeader =
 
   const handleControlToggle = (key: keyof ControlVisibility) => {
     setControlVisibility(key, !controlVisibility[key]);
+  };
+
+  const handleLeftClickIdentifyToggle = () => {
+    const next = !leftClickIdentify;
+    setLeftClickIdentify(next);
+    setLeftClickIdentifyState(next);
+    loadLocalStorageItems();
   };
 
   const handleResetToDefaults = () => {
@@ -134,6 +145,20 @@ export default function SettingsTool({ name = "Settings", helpLink, hideHeader =
   return (
     <PanelComponent name={name} helpLink={helpLink} hideHeader={hideHeader} onClose={onClose} onSidebarVisibility={onSidebarVisibility}>
       <div className="flex flex-col gap-4 p-4 text-sm">
+        {/* Map Behaviour Section */}
+        <div className="card bg-base-100 border border-base-200 shadow-sm">
+          <div className="card-body p-4 gap-2">
+            <h3 className="card-title text-sm">Map Behaviour</h3>
+            <label
+              className="label cursor-pointer justify-start gap-3 rounded-lg px-2 py-1 hover:bg-base-200/60"
+              title="Clicking the map identifies features in all visible layers and shows them in the Reports tab (old i-Map behaviour). Right-click > Identify still works when this is off."
+            >
+              <input type="checkbox" className="checkbox checkbox-sm" checked={leftClickIdentify} onChange={handleLeftClickIdentifyToggle} />
+              <span className="label-text text-xs">Left-click Identify</span>
+            </label>
+          </div>
+        </div>
+
         {/* Map Controls Section */}
         <div className="card bg-base-100 border border-base-200 shadow-sm">
           <div className="card-body p-4 gap-4">

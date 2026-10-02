@@ -495,5 +495,12 @@ export function pickImplicitSortField(fields: WfsFieldDescriptor[]): string | nu
   const byNameId = attrs.find((f) => !f.nillable && nameLooksLikeId(f.name));
   if (byNameId) return byNameId.name;
 
+  // PostGIS views report every column as nillable, so a view's gid/id never passes the check
+  // above and the whole layer got fetched unpaged (too slow for big views). An id-named numeric
+  // column is still a safe bet; if GeoServer does reject it, fetchPageWithPkSafety falls back
+  // to the unpaged fetch.
+  const byNillableNameId = attrs.find((f) => f.type === "number" && nameLooksLikeId(f.name));
+  if (byNillableNameId) return byNillableNameId.name;
+
   return null;
 }

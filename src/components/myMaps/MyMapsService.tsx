@@ -39,7 +39,8 @@ export default function MyMapsService() {
   const saveToStorage = useMyMapsStore((s) => s.saveToStorage);
   const addItem = useMyMapsStore((s) => s.addItem);
   const updateItem = useMyMapsStore((s) => s.updateItem);
-  const removeItem = useMyMapsStore((s) => s.removeItem);
+  // Single-item deletes get the Undo toast (legacy My Maps onItemDelete)
+  const removeItem = useMyMapsStore((s) => s.deleteItemWithUndo);
   const getNextDrawingNumber = useMyMapsStore((s) => s.getNextDrawingNumber);
 
   const map = useMapStore((s) => s.map);

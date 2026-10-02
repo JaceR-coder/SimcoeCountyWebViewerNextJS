@@ -7,6 +7,7 @@ import { buildSavePayload } from "@/utils/myMapsFormat";
 import { isOldOLStyleFormat, transformOLStyle } from "@/utils/storageMigration";
 import { v4 as uuidv4 } from "uuid";
 import { setStorageItem, getStorageItem } from "@/utils/storage";
+import { useToastStore } from "@/hooks/useToast";
 
 // Label style JSON representation for callouts and labels
 export interface LabelStyleJSON {
@@ -79,6 +80,18 @@ export interface MyMapsItem {
   fillAlpha?: number; // For style opacity slider persistence
   strokeAlpha?: number; // For outline opacity slider persistence
   hasChanged?: boolean; // For tracking modifications
+  folderId?: string | null; // Folder this item sits in (legacy My Maps folders); absent/null = root
+}
+
+/**
+ * A My Maps folder - ported from the legacy SimcoeCountyWebViewer (same {id, label, panelOpen}
+ * shape it saves), single-level: items point at a folder via item.folderId. panelOpen false =
+ * collapsed (absent counts as open, as in legacy).
+ */
+export interface MyMapsFolder {
+  id: string;
+  label: string;
+  panelOpen?: boolean;
 }
 
 export interface MyMapsConfig {
@@ -110,6 +123,11 @@ export interface MyMapsState {
   items: MyMapsItem[];
   drawingCounter: number; // Counter for auto-naming drawings
 
+  // Folders (legacy My Maps organisation)
+  folders: MyMapsFolder[];
+  /** Folder new drawings / added items land in ("active workspace"), null = root */
+  activeFolderId: string | null;
+
   // Edit state
   isEditing: boolean;
   editMode: EditMode;
@@ -135,6 +153,13 @@ export interface MyMapsState {
   // Actions - Items
   addItem: (item: MyMapsItem) => void;
   removeItem: (id: string) => void;
+  /**
+   * Single-item delete with an "Undo" button on the confirmation toast (legacy My Maps
+   * onItemDelete). Bulk deletes keep using removeItem so they don't post one toast per item.
+   */
+  deleteItemWithUndo: (id: string) => void;
+  /** Puts a deleted item back at (about) its old position - see deleteItemWithUndo */
+  restoreItem: (item: MyMapsItem, index: number) => void;
   updateItem: (id: string, updates: Partial<MyMapsItem>) => void;
   toggleItemVisibility: (id: string) => void;
   updateItemLabel: (id: string, label: string) => void;
@@ -142,6 +167,22 @@ export interface MyMapsState {
   updateItemLabelRotation: (id: string, rotation: number) => void;
   updateItemStyle: (id: string, style: StyleJSON, pointType?: string, strokeType?: string) => void;
   clearAllItems: () => void;
+
+  // Actions - Folders
+  /** Creates a folder at the top of the list and returns its id */
+  createFolder: (label?: string) => string;
+  renameFolder: (folderId: string, label: string) => void;
+  toggleFolder: (folderId: string) => void;
+  /** Deletes the folder only - its items move to root, never deleted */
+  deleteFolder: (folderId: string) => void;
+  /** Makes the folder the active workspace; calling again with the active folder clears to root */
+  setActiveFolder: (folderId: string | null) => void;
+  /** folderId null = back to root */
+  moveItemToFolder: (itemId: string, folderId: string | null) => void;
+  /** Drag-and-drop: moves the dragged item into targetFolderId, positioned just before targetItemId */
+  reorderItem: (draggedItemId: string, targetItemId: string, targetFolderId: string | null) => void;
+  setFolderVisibility: (folderId: string, visible: boolean) => void;
+  exportItemsToFile: (items: MyMapsItem[], format: "KML" | "GeoJSON" | "EsriJSON") => { success: boolean; message?: string; count?: number };
 
   // Actions - Counter
   getNextDrawingNumber: () => number;
@@ -154,7 +195,8 @@ export interface MyMapsState {
   zoomToSelected: () => void;
   mergePolygons: () => { success: boolean; message?: string };
   exportToFile: (format: "KML" | "GeoJSON" | "EsriJSON") => { success: boolean; message?: string; count?: number };
-  saveToApi: (options?: { myMapsName?: string; isAuthenticated?: boolean }) => Promise<{ success: boolean; message?: string; id?: string }>;
+  /** folderId: save just that folder and its items (legacy "Save Folder (Get Shareable Link)") */
+  saveToApi: (options?: { myMapsName?: string; isAuthenticated?: boolean; folderId?: string }) => Promise<{ success: boolean; message?: string; id?: string }>;
   importFromApi: (id: string) => Promise<{ success: boolean; message?: string; data?: unknown }>;
 
   // Actions - Edit mode
@@ -212,6 +254,20 @@ function extractAlpha(color: unknown): number | undefined {
   return undefined;
 }
 
+/** Keeps only well-formed folders from stored/imported data */
+function sanitizeFolders(raw: unknown): MyMapsFolder[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((f): f is MyMapsFolder => !!f && typeof f === "object" && typeof (f as MyMapsFolder).id === "string")
+    .map((f) => ({ id: f.id, label: typeof f.label === "string" ? f.label : "Folder", panelOpen: f.panelOpen !== false }));
+}
+
+/** Folders from `incoming` not already present (by id), in their original order */
+function newFolders(existing: MyMapsFolder[], incoming: unknown): MyMapsFolder[] {
+  const ids = new Set(existing.map((f) => f.id));
+  return sanitizeFolders(incoming).filter((f) => !ids.has(f.id));
+}
+
 function normalizeStoredItem(item: MyMapsItem): MyMapsItem {
   let normalizedStyle = item.style;
   let fillAlpha = item.fillAlpha;
@@ -262,6 +318,8 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
     drawStyle: null,
     items: [],
     drawingCounter: 1,
+    folders: [],
+    activeFolderId: null,
     isEditing: false,
     editMode: null,
     toolTipClass: "sc-hidden",
@@ -287,10 +345,16 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
 
     // Items actions
     addItem: (item) => {
-      set((state) => ({
-        items: [item, ...state.items], // Add to beginning like original
-        drawType: "Cancel", // Reset draw type after adding
-      }));
+      set((state) => {
+        // Every drawing / added feature lands in the active workspace folder unless the caller
+        // already chose one (legacy addNewItem) - the single place all item sources funnel through
+        const active = state.activeFolderId && state.folders.some((f) => f.id === state.activeFolderId) ? state.activeFolderId : null;
+        const folderId = item.folderId !== undefined ? item.folderId : active;
+        return {
+          items: [{ ...item, folderId }, ...state.items], // Add to beginning like original
+          drawType: "Cancel", // Reset draw type after adding
+        };
+      });
       get().saveToStorage();
     },
 
@@ -299,6 +363,29 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
         items: state.items.filter((item) => item.id !== id),
       }));
       get().saveToStorage();
+    },
+
+    deleteItemWithUndo: (id) => {
+      const index = get().items.findIndex((item) => item.id === id);
+      if (index === -1) return;
+      const deleted = get().items[index];
+      get().removeItem(id);
+      useToastStore.getState().addToast(`Deleted "${deleted.label}".`, "success", 6000, {
+        label: "Undo",
+        onClick: () => get().restoreItem(deleted, index),
+      });
+    },
+
+    restoreItem: (item, index) => {
+      if (get().items.some((existing) => existing.id === item.id)) return;
+      set((state) => {
+        const items = state.items.slice();
+        // Best effort at the original spot, in case items were added/removed since
+        items.splice(Math.max(0, Math.min(index, items.length)), 0, item);
+        return { items };
+      });
+      get().saveToStorage();
+      useToastStore.getState().addToast(`Restored "${item.label}".`, "success", 3000);
     },
 
     updateItem: (id, updates) => {
@@ -335,8 +422,84 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
     },
 
     clearAllItems: () => {
+      // Folders stay, as in legacy's Delete All
       set({ items: [], drawingCounter: 1 });
       get().saveToStorage();
+    },
+
+    // Folder actions (legacy MyMaps.jsx onCreateFolder / onRenameFolder / ... )
+    createFolder: (label) => {
+      const id = generateId();
+      set((state) => ({ folders: [{ id, label: label || `New Folder ${state.folders.length + 1}`, panelOpen: true }, ...state.folders] }));
+      get().saveToStorage();
+      return id;
+    },
+
+    renameFolder: (folderId, label) => {
+      set((state) => ({ folders: state.folders.map((f) => (f.id === folderId ? { ...f, label } : f)) }));
+      get().saveToStorage();
+    },
+
+    toggleFolder: (folderId) => {
+      set((state) => ({ folders: state.folders.map((f) => (f.id === folderId ? { ...f, panelOpen: f.panelOpen === false } : f)) }));
+      get().saveToStorage();
+    },
+
+    deleteFolder: (folderId) => {
+      set((state) => ({
+        folders: state.folders.filter((f) => f.id !== folderId),
+        items: state.items.map((item) => (item.folderId === folderId ? { ...item, folderId: null } : item)),
+        // A deleted folder can't stay the active workspace
+        activeFolderId: state.activeFolderId === folderId ? null : state.activeFolderId,
+      }));
+      get().saveToStorage();
+    },
+
+    setActiveFolder: (folderId) => {
+      set((state) => ({ activeFolderId: folderId === null || state.activeFolderId === folderId ? null : folderId }));
+      get().saveToStorage();
+    },
+
+    moveItemToFolder: (itemId, folderId) => {
+      set((state) => ({ items: state.items.map((item) => (item.id === itemId ? { ...item, folderId } : item)) }));
+      get().saveToStorage();
+    },
+
+    reorderItem: (draggedItemId, targetItemId, targetFolderId) => {
+      if (draggedItemId === targetItemId) return;
+      set((state) => {
+        // Root and every folder are filtered views of the one items array, so reordering it is all
+        // the lists need
+        const items = state.items.slice();
+        const draggedIndex = items.findIndex((item) => item.id === draggedItemId);
+        if (draggedIndex === -1) return {};
+        const [dragged] = items.splice(draggedIndex, 1);
+        const moved = { ...dragged, folderId: targetFolderId };
+        const targetIndex = items.findIndex((item) => item.id === targetItemId);
+        if (targetIndex === -1) items.push(moved);
+        else items.splice(targetIndex, 0, moved);
+        return { items };
+      });
+      get().saveToStorage();
+    },
+
+    setFolderVisibility: (folderId, visible) => {
+      set((state) => ({ items: state.items.map((item) => (item.folderId === folderId ? { ...item, visible } : item)) }));
+      get().saveToStorage();
+    },
+
+    exportItemsToFile: (items, format) => {
+      const visibleItems = items.filter((item) => item.visible);
+      if (visibleItems.length === 0) {
+        return { success: false, message: "No visible features to export. Turn on the items you want to export first.", count: 0 };
+      }
+      try {
+        exportFeaturesToFile(visibleItems, format);
+        return { success: true, message: `Successfully exported ${visibleItems.length} features to ${format}`, count: visibleItems.length };
+      } catch (error) {
+        console.error(`Error exporting to ${format}:`, error);
+        return { success: false, message: `Error occurred while exporting to ${format}. Please try again.`, count: 0 };
+      }
     },
 
     // Counter actions
@@ -496,14 +659,23 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
       }
     },
 
-    saveToApi: async (options?: { myMapsName?: string; isAuthenticated?: boolean }) => {
+    saveToApi: async (options?: { myMapsName?: string; isAuthenticated?: boolean; folderId?: string }) => {
       const state = get();
+
+      // Folder save: just that folder's items and its own folders entry, so importing the ID
+      // elsewhere recreates only that folder (legacy exportMyMaps(..., folderId))
+      const folderId = options?.folderId;
+      const scopedItems = folderId ? state.items.filter((item) => item.folderId === folderId) : state.items;
+      const scopedFolders = folderId ? state.folders.filter((f) => f.id === folderId) : state.folders;
+      if (folderId && scopedItems.length === 0) {
+        return { success: false, message: "There are no items in this folder to save." };
+      }
 
       try {
         // Mirror the legacy save behavior: any items flagged `hasChanged` get a
         // fresh UUID (and the same UUID swapped inside their featureGeoJSON
         // string) before being shipped to the server.
-        const itemsForSave = state.items.map((item) => {
+        const itemsForSave = scopedItems.map((item) => {
           if (item.hasChanged || false) {
             const oldId = item.id;
             const newId = generateId();
@@ -522,6 +694,8 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
         // save path, guaranteeing cross-compatibility.
         const dataToSave = buildSavePayload({
           items: itemsForSave,
+          folders: scopedFolders,
+          activeFolderId: folderId ? null : state.activeFolderId,
           drawType: state.drawType,
           drawColor: state.drawColor,
           drawOpacity: state.drawOpacity,
@@ -550,6 +724,9 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
         }
 
         if (result.id) {
+          const { trackEvent } = await import("@/lib/appStats");
+          trackEvent("mymaps.saved", "mymaps", folderId ? "folder" : "all", { item_count: itemsForSave.length });
+
           // Copy ID to clipboard
           try {
             await navigator.clipboard.writeText(result.id);
@@ -636,6 +813,14 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
           if (parsedData.items && Array.isArray(parsedData.items)) {
             const currentState = get();
 
+            // Merge in folders not already here - without them, imported items that belonged to a
+            // folder would point at a folderId that doesn't exist (legacy onMyMapsImport). Snapshots
+            // saved before folders existed simply have none.
+            const foldersToAdd = newFolders(currentState.folders, parsedData.folders);
+            if (foldersToAdd.length > 0) {
+              set((state) => ({ folders: [...newFolders(state.folders, foldersToAdd), ...state.folders] }));
+            }
+
             // Filter out items that already exist (same logic as old app)
             const itemsToAdd: MyMapsItem[] = [];
             parsedData.items.forEach((item: unknown) => {
@@ -696,6 +881,7 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
                 data: result,
               };
             } else {
+              if (foldersToAdd.length > 0) get().saveToStorage();
               return {
                 success: true,
                 message: "No new items to import - all items already exist.",
@@ -751,6 +937,7 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
             const newItems = data.items.filter((item: MyMapsItem) => !existingIds.has(item.id));
             return {
               items: [...newItems, ...state.items],
+              folders: [...newFolders(state.folders, data.folders), ...state.folders],
               drawColor: data.drawColor || state.drawColor,
               drawOpacity: data.drawOpacity || state.drawOpacity,
             };
@@ -771,6 +958,8 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
 
         const dataToSave = buildSavePayload({
           items: state.items,
+          folders: state.folders,
+          activeFolderId: state.activeFolderId,
           drawType: state.drawType,
           drawColor: state.drawColor,
           drawOpacity: state.drawOpacity,
@@ -817,8 +1006,11 @@ export const useMyMapsStore = create<MyMapsState>((set, get) => {
             return true;
           });
 
+          const folders = sanitizeFolders(data.folders);
           set({
             items: dedupedItems,
+            folders,
+            activeFolderId: typeof data.activeFolderId === "string" && folders.some((f) => f.id === data.activeFolderId) ? data.activeFolderId : null,
             // Always start in a neutral tool state on app load; restoring an
             // active draw tool (especially Eraser) causes unintended startup behavior.
             drawType: "Cancel",

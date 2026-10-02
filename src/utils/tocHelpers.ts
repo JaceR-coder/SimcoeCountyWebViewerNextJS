@@ -184,8 +184,22 @@ export function buildLayerFromWMS(group: Partial<TOCLayerGroup> & { secure?: boo
 
   // Build server URLs
   const geoserverPath = config.geoserverPath || "geoserver";
-  const serverUrl = group.wmsGroupUrl?.split(`/${geoserverPath}/`)[0] + `/${geoserverPath}` || "";
-  const metadataUrl = `${serverUrl}/rest/layers/${layerNameOnly.split(" ").join("%20")}.json`;
+  // Groups served through the /geoserver-proxy/ route have no "/geoserver/" in their URL, so the
+  // split below came back as the whole capabilities URL (".../ows?...GetCapabilities/geoserver"),
+  // which GetMap/WFS only tolerated by accident and the Metadata option couldn't use at all.
+  // Proxied layers instead get the configured proxy base (e.g. "/geoserver-proxy"): qualified names
+  // ("ws:layer") resolve on its global /wms, /wfs and /rest endpoints; an unqualified name (a
+  // workspace virtual service) keeps that virtual service's own base.
+  const isProxied = !group.wmsGroupUrl?.includes(`/${geoserverPath}/`);
+  const proxyBase = (((config as { geoserverUrl?: string }).geoserverUrl) || "").replace(/\/+$/, "");
+  const virtualServiceBase = (group.wmsGroupUrl || "").split("?")[0].replace(/\/(ows|wms)$/i, "");
+  const serverUrl = !isProxied
+    ? group.wmsGroupUrl?.split(`/${geoserverPath}/`)[0] + `/${geoserverPath}` || ""
+    : layerNameOnly.includes(":") || !virtualServiceBase
+      ? proxyBase
+      : virtualServiceBase;
+  const restBase = isProxied ? proxyBase : serverUrl;
+  const metadataUrl = `${restBase}/rest/layers/${layerNameOnly.split(" ").join("%20")}.json`;
 
   // Generate unique ID for this layer
   const generateUniqueLayerId = (name: string, groupName: string): string => {
@@ -308,6 +322,13 @@ export async function getGroupsFromGeoServer(source: TOCSource, config: Config, 
     const geoserverPath = config.geoserverPath || "geoserver";
     const groups: TOCLayerGroup[] = [];
 
+    // "group": one umbrella layer group (e.g. NER_Works) whose sub-groups each become a TOC group.
+    // A single config `group` block can't describe many groups, so it's ignored there - names come
+    // from GeoServer, with optional overrides/exclusions on the source.
+    const multiGroup = urlType === "group";
+    const configGroup = multiGroup ? undefined : source.group;
+    const sourceIsProxied = !source.layerUrl.includes(`/${geoserverPath}/`);
+
     // Remove underscore helper
     const removeUnderscore = (name: string) => name.replace(/_/g, " ");
 
@@ -316,13 +337,18 @@ export async function getGroupsFromGeoServer(source: TOCSource, config: Config, 
       if (layerInfo.Layer !== undefined) {
         // The root <Layer> in a "flat" (single-name-scoped) response has no Name/Title of its
         // own — fall back to what the source config already supplies in that case.
-        const groupName = layerInfo.Name || source.group?.name || "";
+        const groupName = layerInfo.Name || configGroup?.name || "";
+        const shortGroupName = groupName.split(":").pop() || groupName;
+        if (multiGroup && source.excludeGroups?.includes(shortGroupName)) continue;
         const isDefault = groupName.toUpperCase() === defaultGroupName.toUpperCase();
-        const groupDisplayName = layerInfo.Title || source.group?.displayName || groupName;
+        const groupDisplayName = (multiGroup && source.groupDisplayNames?.[shortGroupName]) || layerInfo.Title || configGroup?.displayName || groupName;
         // "flat" sources already scope directly to this one group — reuse the source URL as-is
         // rather than reconstructing from groupName (which may just be the config-supplied name,
         // not a real workspace-qualified name to derive a URL from).
-        const groupUrl = urlType === "flat" ? source.layerUrl : source.layerUrl.split(`/${geoserverPath}/`)[0] + `/${geoserverPath}/` + groupName.replace(":", "/") + "/ows?service=wms&version=1.3.0&request=GetCapabilities";
+        // Proxied umbrella sub-groups also reuse the umbrella URL: the reconstructed
+        // /<groupName>/ows would hit the proxy wrongly, and for a group named like a workspace
+        // (road_interests, traffic, ...) GeoServer serves the WORKSPACE there, not the group.
+        const groupUrl = urlType === "flat" || (multiGroup && sourceIsProxied) ? source.layerUrl : source.layerUrl.split(`/${geoserverPath}/`)[0] + `/${geoserverPath}/` + groupName.replace(":", "/") + "/ows?service=wms&version=1.3.0&request=GetCapabilities";
 
         // Parse group keywords
         const keywords = layerInfo.KeywordList || [];
@@ -340,8 +366,8 @@ export async function getGroupsFromGeoServer(source: TOCSource, config: Config, 
 
         // Override with source configuration (only if config provides a non-empty array;
         // an empty array [] is truthy and would clobber GeoServer keyword visibility)
-        if (source.group?.visibleLayers && source.group.visibleLayers.length > 0) {
-          visibleLayers = source.group.visibleLayers;
+        if (configGroup?.visibleLayers && configGroup.visibleLayers.length > 0) {
+          visibleLayers = configGroup.visibleLayers;
         }
 
         // Build layers
@@ -349,8 +375,8 @@ export async function getGroupsFromGeoServer(source: TOCSource, config: Config, 
         let layerIndex = layerInfo.Layer.length + LAYER_INDEX_START;
 
         const tmpGroupObj: Partial<TOCLayerGroup> & { secure?: boolean; primary?: boolean } = {
-          value: source.group?.name || groupName,
-          label: source.group?.displayName || removeUnderscore(groupDisplayName),
+          value: configGroup?.name || groupName,
+          label: configGroup?.displayName || removeUnderscore(groupDisplayName),
           url: groupUrl,
           secure: source.secure,
           primary: source.primary,
@@ -381,8 +407,8 @@ export async function getGroupsFromGeoServer(source: TOCSource, config: Config, 
 
         // Create the final group object
         const groupObj: TOCLayerGroup = {
-          value: source.group?.name || groupName,
-          label: source.group?.displayName || removeUnderscore(groupDisplayName),
+          value: configGroup?.name || groupName,
+          label: configGroup?.displayName || removeUnderscore(groupDisplayName),
           url: groupUrl,
           prefix: groupPrefix,
           defaultGroup: isDefault,
@@ -396,6 +422,14 @@ export async function getGroupsFromGeoServer(source: TOCSource, config: Config, 
           groups.push(groupObj);
         }
       }
+    }
+
+    if (multiGroup) {
+      // Keep GeoServer's own group order (the umbrella's capabilities list sub-groups in the order
+      // configured in GeoServer) unless the source asks for alphabetical; stamp it so the TOC store's
+      // group sort doesn't re-order by name.
+      if (source.sortGroups) groups.sort((a, b) => a.label.localeCompare(b.label));
+      groups.forEach((g, i) => (g.sortOrder = i));
     }
 
     return groups;
@@ -1032,6 +1066,8 @@ const sortByIndexCompare = (a: TOCLayer, b: TOCLayer): number => {
 };
 
 const sortGroupAlphaCompare = (a: TOCLayerGroup, b: TOCLayerGroup): number => {
+  // Groups whose source fixed an order (see getGroupsFromGeoServer) keep it
+  if (typeof a.sortOrder === "number" && typeof b.sortOrder === "number") return a.sortOrder - b.sortOrder;
   if (a.value < b.value) {
     return -1;
   } else if (a.value > b.value) {

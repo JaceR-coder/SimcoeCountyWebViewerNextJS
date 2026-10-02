@@ -39,7 +39,7 @@ const printFormats = [
 export default function PrintLocalTool({ name = "Print Local", helpLink, hideHeader = false, onClose, onSidebarVisibility }: PrintLocalToolProps) {
   const { map } = useMapStore();
   const toast = useToast();
-  const [mapTitle, setMapTitle] = useState("County of Simcoe WebViewer");
+  const [mapTitle, setMapTitle] = useState("Ministry of Transportation - iMAPS");
   const [printSizeSelected, setPrintSizeSelected] = useState(printSizes[0]);
   const [printFormatSelected, setPrintFormatSelected] = useState(printFormats[0]);
   const [isPrinting, setIsPrinting] = useState(false);

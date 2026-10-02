@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import Image from "next/image";
 import { MyMapsItem } from "@/types/myMaps";
+import type { MyMapsFolder } from "@/stores/myMapsStore";
 import { useMyMapsExtensionStore, type MyMapsExtensionItem } from "@/stores/myMapsExtensionStore";
 import { useAppStore } from "@/stores/appStore";
 import "./MyMapsItemPopup.css";
@@ -21,6 +22,10 @@ export interface MyMapsItemPopupProps {
   onExport?: (item: MyMapsItem, format: "geojson" | "kml" | "esrijson") => void;
   onIdentify?: (item: MyMapsItem) => void;
   onReportProblem?: (item: MyMapsItem) => void;
+  /** Folders for the "Move to Folder" submenu (legacy My Maps) */
+  folders?: MyMapsFolder[];
+  /** folderId null = back to root, "new" = create a folder and move the item into it */
+  onMoveToFolder?: (item: MyMapsItem, folderId: string | null | "new") => void;
 }
 
 const MyMapsItemPopup: React.FC<MyMapsItemPopupProps> = ({
@@ -37,9 +42,12 @@ const MyMapsItemPopup: React.FC<MyMapsItemPopupProps> = ({
   onExport,
   onIdentify,
   onReportProblem,
+  folders = [],
+  onMoveToFolder,
 }) => {
   const popupRef = useRef<HTMLDivElement>(null);
   const [showExportSubmenu, setShowExportSubmenu] = useState(false);
+  const [showFolderSubmenu, setShowFolderSubmenu] = useState(false);
   const [openExtSubmenu, setOpenExtSubmenu] = useState<string | null>(null);
   const extensionItemsMap = useMyMapsExtensionStore((s) => s.items);
   const drawingVis = useAppStore((s) => s.config?.drawingOptionsToolsMenuVisibility);
@@ -96,6 +104,7 @@ const MyMapsItemPopup: React.FC<MyMapsItemPopupProps> = ({
     action();
     if (closeAfter) {
       setShowExportSubmenu(false);
+      setShowFolderSubmenu(false);
       setOpenExtSubmenu(null);
       onClose();
     }
@@ -163,6 +172,35 @@ const MyMapsItemPopup: React.FC<MyMapsItemPopupProps> = ({
             <div className="popup-menu-item" onClick={() => handleMenuItemClick(() => onShowGeometry(item))} title="Show geometry details">
               <Image src="/images/edit-vertices.png" alt="Show Geometry" width={16} height={16} />
               <span>Show Geometry</span>
+            </div>
+          )}
+
+          {/* Move to Folder - every folder but the one it's in, plus root and a new folder */}
+          {onMoveToFolder && (
+            <div className="popup-menu-item-parent" onMouseEnter={() => setShowFolderSubmenu(true)} onMouseLeave={() => setShowFolderSubmenu(false)} onClick={() => setShowFolderSubmenu((o) => !o)} title="Move this item into a folder">
+              <Image src="/images/toc/folder.png" alt="Move to Folder" width={16} height={16} />
+              <span>Move to Folder</span>
+              <span className="text-[10px] text-base-content/70 ml-auto pl-2">▶</span>
+
+              {showFolderSubmenu && (
+                <div className="popup-submenu-container animate-submenuFadeIn">
+                  {item.folderId && (
+                    <div className="popup-submenu-item" onClick={() => handleMenuItemClick(() => onMoveToFolder(item, null))} title="Move back to Root Items">
+                      <span>Root Items</span>
+                    </div>
+                  )}
+                  {folders
+                    .filter((folder) => folder.id !== item.folderId)
+                    .map((folder) => (
+                      <div key={folder.id} className="popup-submenu-item" onClick={() => handleMenuItemClick(() => onMoveToFolder(item, folder.id))} title={`Move to ${folder.label}`}>
+                        <span>{folder.label}</span>
+                      </div>
+                    ))}
+                  <div className="popup-submenu-item" onClick={() => handleMenuItemClick(() => onMoveToFolder(item, "new"))} title="Create a new folder and move this item into it">
+                    <span>New Folder...</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

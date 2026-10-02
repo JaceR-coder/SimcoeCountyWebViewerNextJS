@@ -47,6 +47,8 @@ interface ImageryService {
 
 interface BasemapConfig {
   defaultButton: string;
+  /** Position of the "Imagery" tile among the topo services in the picker (default: first) */
+  imageryOptionIndex?: number;
   defaultTopoServiceName?: string;
   topoServices: BasemapService[];
   imageryServices: ImageryService[];
@@ -438,6 +440,11 @@ export default function BasemapSwitcher() {
               break;
             case "ESRI_VECTOR_TILED":
               sourceType = OL_DATA_TYPES.VectorTile;
+              break;
+            case "ARCGIS_EXPORT":
+              // Uncached ArcGIS MapServer/ImageServer, drawn from export requests (legacy i-Map's
+              // Basic switcher "ESRI_TILED", e.g. LIO's FRI DTM ImageServer)
+              sourceType = OL_DATA_TYPES.TileArcGISRest;
               break;
             default:
               console.warn("BasemapSwitcher: Unknown layer type", layerConfig.type);
@@ -1024,19 +1031,19 @@ export default function BasemapSwitcher() {
       <div
         className={`absolute right-[2px] w-[120px] top-[70px] bg-base-100 rounded z-[2] border border-base-300 p-1 opacity-90 select-none transition-opacity duration-200 flex flex-col gap-1.5 max-h-[400px] overflow-y-auto hover:opacity-100${!topoPanelOpen ? " hidden" : ""}`}
       >
-        {/* Imagery Option */}
-        <div
-          className={`p-0 border border-base-300 rounded cursor-pointer bg-base-200 transition-all duration-200 flex flex-col items-center text-center min-h-[70px] hover:bg-primary/10 hover:border-primary/50 hover:shadow-[0_0_3px_rgba(0,123,255,0.3)]${activeButton === "imagery" ? " !bg-success/20 !border-success text-success-content shadow-[0_0_3px_rgba(40,167,69,0.3)]" : ""}`}
-          onClick={onImagerySelect}
-          title="Imagery"
-        >
-          <div className="text-[9px] font-bold mb-0 text-inherit whitespace-nowrap overflow-hidden text-ellipsis w-full">Imagery</div>
-          <Image className="rounded-[3px] border border-base-300 object-cover max-w-[72px] max-h-[50px]" src="/images/imagery-basemap.png" alt="Imagery" width={80} height={60} />
-        </div>
-
-        {/* Topo Services */}
-        {config &&
-          config.topoServices?.map((service) => (
+        {(() => {
+          const imageryOption = (
+            <div
+              key="__imagery__"
+              className={`p-0 border border-base-300 rounded cursor-pointer bg-base-200 transition-all duration-200 flex flex-col items-center text-center min-h-[70px] hover:bg-primary/10 hover:border-primary/50 hover:shadow-[0_0_3px_rgba(0,123,255,0.3)]${activeButton === "imagery" ? " !bg-success/20 !border-success text-success-content shadow-[0_0_3px_rgba(40,167,69,0.3)]" : ""}`}
+              onClick={onImagerySelect}
+              title="Imagery"
+            >
+              <div className="text-[9px] font-bold mb-0 text-inherit whitespace-nowrap overflow-hidden text-ellipsis w-full">Imagery</div>
+              <Image className="rounded-[3px] border border-base-300 object-cover max-w-[72px] max-h-[50px]" src="/images/imagery-basemap.png" alt="Imagery" width={80} height={60} />
+            </div>
+          );
+          const topoOptions = (config?.topoServices ?? []).map((service) => (
             <div
               key={service.name}
               className={`p-0 border border-base-300 rounded cursor-pointer bg-base-200 transition-all duration-200 flex flex-col items-center text-center min-h-[70px] hover:bg-primary/10 hover:border-primary/50 hover:shadow-[0_0_3px_rgba(0,123,255,0.3)]${selectedTopoService?.name === service.name && activeButton === "topo" ? " !bg-success/20 !border-success text-success-content shadow-[0_0_3px_rgba(40,167,69,0.3)]" : ""}`}
@@ -1046,7 +1053,12 @@ export default function BasemapSwitcher() {
               <div className="text-[9px] font-bold mb-0 text-inherit whitespace-nowrap overflow-hidden text-ellipsis w-full">{service.name}</div>
               <Image className="rounded-[3px] border border-base-300 object-cover max-w-[72px] max-h-[50px]" src={`/images/${service.image}`} alt={service.name} width={80} height={60} />
             </div>
-          ))}
+          ));
+          // Imagery is a mode (year slider), not a topo service, so it's spliced into the list
+          const imageryIndex = Math.min(Math.max(config?.imageryOptionIndex ?? 0, 0), topoOptions.length);
+          topoOptions.splice(imageryIndex, 0, imageryOption);
+          return topoOptions;
+        })()}
       </div>
     </>
   );

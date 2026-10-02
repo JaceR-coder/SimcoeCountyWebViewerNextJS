@@ -45,14 +45,15 @@ const nextConfig: NextConfig = {
     return config;
   },
   async rewrites() {
-    // Local dev only: the internal i-Map GeoServer isn't browser-reachable
-    // cross-origin (no CORS headers, county-internal network). Proxy it
-    // same-origin through the Next.js server instead, mirroring what the
-    // legacy CRA app did with its own dev-time setupProxy.js.
+    // py-Geomatics (accounts, /imap/token, login page, later gis_reports) served same-origin so
+    // its session cookie is scoped to this app. GeoServer is NOT rewritten here: /geoserver-proxy/*
+    // is a route handler (src/app/geoserver-proxy) that goes through py-Geomatics' layer-permission
+    // proxy with the caller's token attached.
+    const geomaticsUrl = (process.env.GEOMATICS_URL || "https://ops-mz0075jf.cihs.ad.gov.on.ca/geomatics").replace(/\/+$/, "");
     return [
       {
-        source: "/geoserver-proxy/:path*",
-        destination: "https://ops-mz0075jf.cihs.ad.gov.on.ca/geoserver/:path*",
+        source: "/geomatics/:path*",
+        destination: `${geomaticsUrl}/:path*`,
       },
     ];
   },

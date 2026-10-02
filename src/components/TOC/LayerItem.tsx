@@ -5,10 +5,15 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { TOCLayerGroup, TOCLayer, useTOCStore } from "@/stores/tocStore";
 import { useMapStore } from "@/stores/mapStore";
 import { getMapScale } from "@/utils/mapHelpers";
-import { FaPaperclip, FaInfoCircle, FaDownload, FaLock, FaUser, FaEllipsisV, FaGripVertical } from "react-icons/fa";
+import { FaPaperclip, FaInfoCircle, FaDownload, FaLock, FaUser, FaEllipsisV, FaGripVertical, FaStar, FaRegStar, FaTimes } from "react-icons/fa";
+import { useImapAuthStore, isTocLayerLocked } from "@/stores/imapAuthStore";
 import LayerLegend, { LegendToggleButton, useLegendDisplayMode } from "@/components/TOC/LayerLegend";
 import { acceptDisclaimer } from "@/utils/disclaimerHelpers";
 import { trackLayer } from "@/lib/appStats";
+import { useLayerManagerStore } from "@/stores/layerManagerStore";
+import { useLayerFilterStore, selectLayerFilters, summarizeCriteria } from "@/stores/layerFilterStore";
+import { clearLayerFilter, qualifiedLayerName } from "@/utils/mapFilter";
+import { deleteSavedLayerFilter, toggleSavedLayerFilter } from "@/components/tools/SpatialReport/savedFilters";
 
 interface LayerItemProps {
   layerInfo: TOCLayer;
@@ -118,23 +123,38 @@ export default function LayerItem({ layerInfo, group, searchText, showDragHandle
     };
   }, [shouldLoadLegend, currentLayerData.legendImage, currentLayerData.legendObj]);
 
+  const locked = useImapAuthStore((s) => isTocLayerLocked(s, layerInfo));
+  const loggedIn = useImapAuthStore((s) => !!s.userDisplayName);
+
+  // Spatial Tool filters saved to this layer ("Save Map Filter to Layer"), keyed by qualified name
+  const qualifiedName = useLayerManagerStore((s) => {
+    const managed = currentLayerData.managedLayerId ? s.layers.TOC.find((l) => l.id === currentLayerData.managedLayerId) : undefined;
+    return managed ? qualifiedLayerName(managed) : undefined;
+  });
+  const savedFilters = useLayerFilterStore(selectLayerFilters(qualifiedName));
+  const activeFilterId = useLayerFilterStore((s) => (qualifiedName ? s.activeFilterByLayer[qualifiedName] : undefined));
+
   const doToggleLayer = () => {
     // Use the current layer data from the store (which has the OpenLayers layer object)
     const currentLayerFromStore = currentLayerData;
+    // A saved filter on a layer that's turned off no longer applies to anything - clear it with the layer
+    if (currentLayerFromStore.visible && activeFilterId && qualifiedName) clearLayerFilter(qualifiedName);
     const updatedLayer = { ...currentLayerFromStore, visible: !currentLayerFromStore.visible };
     onLayerChange(updatedLayer, group);
   };
 
   const onCheckboxChange = () => {
+    // No py-Geomatics permission for this layer: py-Geomatics' proxy would 403 every tile anyway.
+    // Turning an already-visible locked layer off is still allowed.
+    if (locked && !currentLayerData.visible) return;
+
     // Block the toggle if the layer has a disclaimer that has not been accepted.
     if (!acceptDisclaimer(currentLayerData, doToggleLayer)) {
       return;
     }
 
-    // Track user-initiated turn-on only, not default visibility or turn-offs
-    if (!currentLayerData.visible) {
-      trackLayer(currentLayerData.tocDisplayName, group.label);
-    }
+    // Track user-initiated toggles (not default visibility), like the legacy i-Map
+    trackLayer(currentLayerData.name, group.label, currentLayerData.tocDisplayName, !currentLayerData.visible);
 
     doToggleLayer();
   };
@@ -145,7 +165,7 @@ export default function LayerItem({ layerInfo, group, searchText, showDragHandle
     const parts = text.split(new RegExp(`(${searchText})`, "gi"));
     return parts.map((part, index) =>
       part.toLowerCase() === searchText.toLowerCase() ? (
-        <span key={index} className="bg-yellow-200 font-bold">
+        <span key={index} className="bg-yellow-200 font-bold rounded-sm dark:bg-sky-500/40 dark:text-white">
           {part}
         </span>
       ) : (
@@ -159,6 +179,8 @@ export default function LayerItem({ layerInfo, group, searchText, showDragHandle
   if (!isVisibleAtScale) containerClassName += " italic";
   if (currentLayerData.visible) containerClassName += " font-bold";
   if (!isVisibleAtScale && currentLayerData.visible) containerClassName += " text-gray-500";
+  if (locked) containerClassName += " opacity-60";
+  const lockedTitle = loggedIn ? "Your pyGeomatics account doesn't have access to this layer." : "Sign in with a pyGeomatics account that has access to this layer.";
 
   // Let CSS handle truncation with text-overflow: ellipsis; title attribute provides full name on hover
   const displayName = layerInfo.tocDisplayName;
@@ -185,9 +207,9 @@ export default function LayerItem({ layerInfo, group, searchText, showDragHandle
         <label htmlFor={`sc-toc-item-checkbox-${layerInfo.id}`} className="flex items-center min-w-0 flex-1 overflow-hidden">
           {legendDisplayMode === "inline" && shouldLoadLegend && <LayerLegend legend={currentLayerData.legendObj} image={currentLayerData.legendImage} forceMode="inline" />}
 
-          <input id={`sc-toc-item-checkbox-${layerInfo.id}`} className="inline-flex ml-[5px] scale-110" type="checkbox" onChange={onCheckboxChange} checked={currentLayerData.visible} />
+          <input id={`sc-toc-item-checkbox-${layerInfo.id}`} className="inline-flex ml-[5px] scale-110" type="checkbox" onChange={onCheckboxChange} checked={currentLayerData.visible} disabled={locked && !currentLayerData.visible} />
 
-          <span className="flex-1 min-w-0 ml-2" title={layerInfo.tocDisplayName} style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+          <span className="flex-1 min-w-0 ml-2" title={locked ? `${layerInfo.tocDisplayName} - ${lockedTitle}` : layerInfo.tocDisplayName} style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
             {highlightText(displayName, searchText)}
           </span>
         </label>
@@ -205,7 +227,7 @@ export default function LayerItem({ layerInfo, group, searchText, showDragHandle
           <FaDownload size={16} className="opacity-70 text-[#666]" />
         </div>
 
-        <div className={currentLayerData.secured ? "inline-flex items-center ml-[5px]" : "hidden"} title="This layer is secured.">
+        <div className={currentLayerData.secured || locked ? "inline-flex items-center ml-[5px]" : "hidden"} title={locked ? lockedTitle : "This layer is secured."}>
           <FaLock size={16} className="opacity-70 text-[#666]" />
         </div>
 
@@ -235,6 +257,40 @@ export default function LayerItem({ layerInfo, group, searchText, showDragHandle
           <FaEllipsisV size={16} className="opacity-70 text-[#666]" />
         </div>
       </div>
+
+      {/* Saved filters - star applies/clears one on this layer (turning it on); no zoom */}
+      {qualifiedName && savedFilters.length > 0 && (
+        <div className="ml-7 mb-1 text-[8pt]">
+          <div className="font-bold text-base-content/60">Saved Filters</div>
+          {savedFilters.map((filter) => {
+            const active = activeFilterId === filter.id;
+            return (
+              <div
+                key={filter.id}
+                role="button"
+                className={`flex items-center gap-1.5 px-1 py-0.5 rounded cursor-pointer hover:bg-base-300${active ? " font-bold" : ""}`}
+                title={`${summarizeCriteria(filter.criteria)} - click to ${active ? "clear this filter" : "filter this layer"}.`}
+                onClick={() => toggleSavedLayerFilter(qualifiedName, filter)}
+              >
+                {active ? <FaStar className="text-warning shrink-0" /> : <FaRegStar className="opacity-60 shrink-0" />}
+                <span className="flex-1 min-w-0 truncate">{filter.name}</span>
+                <button
+                  type="button"
+                  className="opacity-60 hover:opacity-100 hover:text-error"
+                  title="Delete this saved filter"
+                  aria-label={`Delete saved filter ${filter.name}`}
+                  onClick={(evt) => {
+                    evt.stopPropagation();
+                    deleteSavedLayerFilter(qualifiedName, filter.id);
+                  }}
+                >
+                  <FaTimes />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Legend container - Legend content appears below when expanded */}
       {legendDisplayMode === "expandable" && currentLayerData.showLegend && (

@@ -34,6 +34,9 @@ vi.mock("react-icons/fa", () => ({
   FaPlay: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "play-icon" }, "Play"),
   FaPause: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "pause-icon" }, "Pause"),
 
+  // Saved layer filter stars (TOC/LayerItem.tsx)
+  FaRegStar: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "reg-star-icon" }),
+
   // Missing icons that were causing test failures
   FaBars: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "bars-icon" }, "Bars"),
   FaSearch: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "search-icon" }, "Search"),
@@ -73,6 +76,7 @@ vi.mock("react-icons/fa", () => ({
   FaGlobeAmericas: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "globe-americas-icon" }, "GlobeAmericas"),
   FaExclamationTriangle: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "exclamation-triangle-icon" }, "ExclamationTriangle"),
   FaGoogle: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "google-icon" }, "Google"),
+  FaStreetView: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "street-view-icon" }, "StreetView"),
   FaEllipsisH: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "ellipsis-h-icon" }, "EllipsisH"),
   FaCompressArrowsAlt: (props: Record<string, unknown>) => React.createElement("div", { ...props, "data-testid": "compress-arrows-alt-icon" }, "CompressArrowsAlt"),
 

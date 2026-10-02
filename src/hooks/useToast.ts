@@ -14,17 +14,24 @@ import { useMemo } from 'react';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
+/** Optional button on a toast (e.g. My Maps' "Undo") - clicking it runs onClick and dismisses */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface Toast {
   id: string;
   message: string;
   type: ToastType;
   duration: number;
   createdAt: number;
+  action?: ToastAction;
 }
 
 interface ToastState {
   toasts: Toast[];
-  addToast: (message: string, type: ToastType, duration?: number) => string;
+  addToast: (message: string, type: ToastType, duration?: number, action?: ToastAction) => string;
   removeToast: (id: string) => void;
   clearAll: () => void;
 }
@@ -38,7 +45,7 @@ const DEFAULT_DURATION = 5000; // 5 seconds
 export const useToastStore = create<ToastState>((set, get) => ({
   toasts: [],
 
-  addToast: (message: string, type: ToastType, duration = DEFAULT_DURATION): string => {
+  addToast: (message: string, type: ToastType, duration = DEFAULT_DURATION, action?: ToastAction): string => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const toast: Toast = {
       id,
@@ -46,6 +53,7 @@ export const useToastStore = create<ToastState>((set, get) => ({
       type,
       duration,
       createdAt: Date.now(),
+      ...(action ? { action } : {}),
     };
 
     set((state) => ({
@@ -104,26 +112,26 @@ export function useToast() {
     /**
      * Show a success toast (green)
      */
-    success: (message: string, duration?: number) => 
-      addToast(message, 'success', duration),
+    success: (message: string, duration?: number, action?: ToastAction) =>
+      addToast(message, 'success', duration, action),
 
     /**
      * Show an error toast (red)
      */
-    error: (message: string, duration?: number) => 
-      addToast(message, 'error', duration),
+    error: (message: string, duration?: number, action?: ToastAction) =>
+      addToast(message, 'error', duration, action),
 
     /**
      * Show an info toast (blue)
      */
-    info: (message: string, duration?: number) => 
-      addToast(message, 'info', duration),
+    info: (message: string, duration?: number, action?: ToastAction) =>
+      addToast(message, 'info', duration, action),
 
     /**
      * Show a warning toast (yellow/orange)
      */
-    warning: (message: string, duration?: number) => 
-      addToast(message, 'warning', duration),
+    warning: (message: string, duration?: number, action?: ToastAction) =>
+      addToast(message, 'warning', duration, action),
 
     /**
      * Remove a specific toast by ID

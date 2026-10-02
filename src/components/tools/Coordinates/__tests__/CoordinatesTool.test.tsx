@@ -295,8 +295,9 @@ describe("CoordinatesTool", () => {
 
       render(<CoordinatesTool onClose={mockOnClose} />);
 
+      // 4 fixed systems + the MTO / Ontario section
       const zoomButtons = screen.getAllByText("Zoom");
-      expect(zoomButtons.length).toBe(4);
+      expect(zoomButtons.length).toBe(5);
     });
 
     it("renders My Maps button for each coordinate system", () => {
@@ -305,7 +306,7 @@ describe("CoordinatesTool", () => {
       render(<CoordinatesTool onClose={mockOnClose} />);
 
       const myMapsButtons = screen.getAllByText("My Maps");
-      expect(myMapsButtons.length).toBe(4);
+      expect(myMapsButtons.length).toBe(5);
     });
 
     it("renders Copy button for each coordinate system", () => {
@@ -345,9 +346,8 @@ describe("CoordinatesTool", () => {
 
       render(<CoordinatesTool onClose={mockOnClose} />);
 
-      const xInputs = screen.getAllByPlaceholderText("(listening for input)");
-      await user.type(xInputs[0], "123");
-      await user.type(xInputs[1], "456");
+      await user.type(document.getElementById("sc-coordinate-webmercator-x") as HTMLElement, "123");
+      await user.type(document.getElementById("sc-coordinate-webmercator-y") as HTMLElement, "456");
 
       const myMapsButtons = screen.getAllByTitle("Add to My Maps");
       await user.click(myMapsButtons[0]);

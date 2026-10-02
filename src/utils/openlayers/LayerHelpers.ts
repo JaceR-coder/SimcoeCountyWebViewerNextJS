@@ -37,6 +37,7 @@ import { applyStyle } from "ol-mapbox-style";
 import { OL_LAYER_TYPES, OL_DATA_TYPES, OLLayerType, OLDataType, LayerOptions, RebuildParams, GroupedLayerOptions } from "@/utils/openlayers/types";
 import { FeatureHelpers } from "@/utils/openlayers/FeatureHelpers";
 import { getAxiosClient } from "@/lib/axiosInstance";
+import { isAbsoluteUrl, resolveStyleUrls } from "./vectorTileStyle";
 import { getAccessToken, isSecuredUrl } from "@/utils/auth";
 
 export class LayerHelpers {
@@ -696,13 +697,16 @@ export class LayerHelpers {
           });
 
           if (rootPath) {
-            const styleUrl = rootPath.startsWith("/") ? rootPath : "/" + rootPath;
+            // A full https:// style URL (a live VectorTileServer's resources/styles/root.json, e.g. the
+            // legacy i-Map's LIO basemaps) is fetched as-is; anything else is a bundled /basemap/ file
+            const remoteStyle = isAbsoluteUrl(rootPath);
+            const styleUrl = remoteStyle || rootPath.startsWith("/") ? rootPath : "/" + rootPath;
 
             const axiosClient = getAxiosClient(styleUrl);
             axiosClient
               .get(styleUrl)
               .then((response) => {
-                const glStyle = response.data;
+                const glStyle = remoteStyle ? resolveStyleUrls(response.data, styleUrl) : response.data;
                 // Patch Esri VectorTileServer styles: add "tiles" template when only "url" provided
                 if (glStyle.sources) {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any

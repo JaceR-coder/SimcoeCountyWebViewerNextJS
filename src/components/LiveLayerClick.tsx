@@ -5,6 +5,7 @@ import { useMapStore } from "@/stores/mapStore";
 import { useTOCStore } from "@/stores/tocStore";
 import { GeoJSON } from "ol/format";
 import { getAxiosClient } from "@/lib/axiosInstance";
+import { wmsRequest } from "@/utils/mapFilter";
 import { getAccessToken } from "@/utils/auth";
 import { useInteractionManager } from "@/components/map/MapContainer";
 import { createIdentifyResult } from "@/components/ResultsPopup";
@@ -208,7 +209,8 @@ export default function LiveLayerClick() {
 
       try {
         const axiosClient = getAxiosClient(url);
-        const response = await axiosClient.get(url, { ...axiosConfig });
+        // WMS GetFeatureInfo is POSTed when too long for a GET (a filtered layer's CQL_FILTER rides along)
+        const response = isArcGISLayer ? await axiosClient.get(url, { ...axiosConfig }) : await wmsRequest(axiosClient, url, { ...axiosConfig });
         let result = response.data;
 
         // Parse string responses

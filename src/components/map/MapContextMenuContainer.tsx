@@ -5,13 +5,12 @@ import { MapContextMenu, ContextMenuItem } from "./MapContextMenu";
 import { useMapStore } from "@/stores/mapStore";
 import { useSidebarStore } from "@/stores/sidebarStore";
 import { useReportsStore } from "@/stores/reportsStore";
-import { usePopupStore } from "@/stores/popupStore";
 import { useMyMapsStore, createMyMapsItem } from "@/stores/myMapsStore";
 import { LayerManager } from "@/utils/openlayers/LayerManager";
 import { useInteractionManager } from "@/components/map/MapContainer";
 import { useAppStore } from "@/stores/appStore";
 import { toLonLat } from "ol/proj";
-import { FaFileAlt, FaMapMarkerAlt, FaExclamationTriangle, FaInfoCircle, FaGoogle, FaEllipsisH, FaCompressArrowsAlt, FaRoad } from "react-icons/fa";
+import { FaStreetView, FaMapMarkerAlt, FaExclamationTriangle, FaInfoCircle, FaGoogle, FaEllipsisH, FaCompressArrowsAlt, FaRoad } from "react-icons/fa";
 import { FaMapLocationDot } from "react-icons/fa6";
 import { Vector as VectorLayer } from "ol/layer";
 import { getPublicPath } from "@/utils/getPublicPath";
@@ -26,6 +25,7 @@ import { useEventStore } from "@/stores/eventStore";
 import { useToastStore } from "@/hooks/useToast";
 import { activateTab } from "@/utils/helpersUI";
 import Identify from "@/components/Identify/Identify";
+import { getLeftClickIdentify } from "@/utils/leftClickIdentify";
 
 export const MapContextMenuContainer: React.FC = () => {
   const map = useMapStore((s) => s.map);
@@ -49,11 +49,6 @@ export const MapContextMenuContainer: React.FC = () => {
   const identifyIconLayerIdRef = useRef<string | null>(null);
 
   // Handle context menu actions
-  const handlePropertyReport = useCallback(() => {
-    // Delegate to PropertyReportClick via the popup store (no scale constraint)
-    usePopupStore.getState().requestPropertyReport(coordinateRef.current, true);
-  }, []);
-
   const handleAddMarker = useCallback(() => {
     if (!map) return;
 
@@ -104,10 +99,8 @@ export const MapContextMenuContainer: React.FC = () => {
     showFeedbackWindow(map, feedbackUrl, { title: "Report a Problem", reportProblem: true });
   }, [map, config?.feedbackUrl]);
 
-  const handleIdentify = useCallback(() => {
+  const identifyAt = useCallback((coordinate: number[]) => {
     if (!map || !identifyIconLayerRef.current) return;
-
-    const coordinate = coordinateRef.current;
 
     // Clear and remove the icon layer
     const source = identifyIconLayerRef.current.getSource();
@@ -148,6 +141,8 @@ export const MapContextMenuContainer: React.FC = () => {
     setActiveTabByName("reports");
   }, [map, setReport, openSidebar, setActiveTabByName]);
 
+  const handleIdentify = useCallback(() => identifyAt(coordinateRef.current), [identifyAt]);
+
 
   // Open the LHRS tool with the clicked location pre-loaded as Point A
   const lhrsTool = useSidebarStore((s) => s.tools?.find((t) => (t.component || t.name) === "LHRS" && t.enabled !== false));
@@ -156,10 +151,15 @@ export const MapContextMenuContainer: React.FC = () => {
     useSidebarStore.getState().requestActivateSidebarItem(lhrsTool.name, "tools", { coordinate: coordinateRef.current });
   }, [lhrsTool]);
 
+  // Same URLs the legacy i-Map built (SCMap.jsx googleMapsTemplate / LHRS "Google Street View")
   const handleGoogleMaps = useCallback(() => {
-    const lonLat = toLonLat(coordinateRef.current);
-    const url = `https://www.google.com/maps?q=${lonLat[1]},${lonLat[0]}`;
-    window.open(url, "_blank");
+    const [lon, lat] = toLonLat(coordinateRef.current);
+    window.open(`https://www.google.com/maps?q=${lat},${lon}`, "_blank", "noopener");
+  }, []);
+
+  const handleStreetView = useCallback(() => {
+    const [lon, lat] = toLonLat(coordinateRef.current);
+    window.open(`https://www.google.com/maps?layer=c&cbll=${lat},${lon}`, "_blank", "noopener");
   }, []);
 
   const handleMore = useCallback(() => {
@@ -200,13 +200,6 @@ export const MapContextMenuContainer: React.FC = () => {
         onClick: handleSwitchToBasic,
       },
       {
-        id: "sc-floating-menu-property-click",
-        label: "Property Report",
-        icon: <FaFileAlt />,
-        visible: visibility["sc-floating-menu-property-click"] !== false,
-        onClick: handlePropertyReport,
-      },
-      {
         id: "sc-floating-menu-add-mymaps",
         label: "Add Marker Point",
         icon: <FaMapMarkerAlt />,
@@ -236,10 +229,17 @@ export const MapContextMenuContainer: React.FC = () => {
       },
       {
         id: "sc-floating-menu-google-maps",
-        label: "View in Google Maps",
+        label: "Open in Google Maps",
         icon: <FaGoogle />,
-        visible: visibility["sc-floating-menu-google-maps"] === true,
+        visible: visibility["sc-floating-menu-google-maps"] !== false,
         onClick: handleGoogleMaps,
+      },
+      {
+        id: "sc-floating-menu-street-view",
+        label: "Open in Street View",
+        icon: <FaStreetView />,
+        visible: visibility["sc-floating-menu-street-view"] !== false,
+        onClick: handleStreetView,
       },
       {
         id: "sc-floating-menu-save-map-extent",
@@ -256,7 +256,7 @@ export const MapContextMenuContainer: React.FC = () => {
         onClick: handleMore,
       },
     ];
-  }, [config, handlePropertyReport, handleAddMarker, handleReportProblem, handleIdentify, handleLHRS, lhrsTool, handleGoogleMaps, handleSaveMapExtent, handleMore, handleSwitchToBasic]);
+  }, [config, handleAddMarker, handleReportProblem, handleIdentify, handleLHRS, lhrsTool, handleGoogleMaps, handleStreetView, handleSaveMapExtent, handleMore, handleSwitchToBasic]);
 
   // Handle context menu display
   const handleContextMenu = useCallback(
@@ -298,7 +298,7 @@ export const MapContextMenuContainer: React.FC = () => {
     const identifyStyle = new Style({
       image: new Icon({
         anchor: [0.5, 1],
-        src: getPublicPath("/images/map-marker.png"),
+        src: getPublicPath("/images/identify-marker.png"),
         scale: 1,
       }),
     });
@@ -352,6 +352,30 @@ export const MapContextMenuContainer: React.FC = () => {
       unregisterHandler("context-menu");
     };
   }, [map, handleContextMenu, checkDisableFlags, registerHandler, unregisterHandler]);
+
+  // Left-click identify (legacy i-Map): every left-click runs Identify into the Reports tab, same
+  // as the right-click "Identify" item. Toggled from the Settings tool; read per click so a
+  // settings change applies immediately. Returns no results so the click popup is unaffected.
+  useEffect(() => {
+    if (!map) return;
+
+    registerHandler({
+      id: "left-click-identify",
+      eventType: "singleclick",
+      priority: 30,
+      conditions: {
+        checkDisableFlags,
+      },
+      handler: (coordinate) => {
+        if (!getLeftClickIdentify(useAppStore.getState().config)) return;
+        identifyAt(coordinate);
+      },
+    });
+
+    return () => {
+      unregisterHandler("left-click-identify");
+    };
+  }, [map, identifyAt, checkDisableFlags, registerHandler, unregisterHandler]);
 
   if (!menuState?.visible) {
     return null;

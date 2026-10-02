@@ -1,5 +1,6 @@
 "use client";
 
+import { trackSearch } from "@/lib/appStats";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { FaSearch, FaMapMarkerAlt, FaTools, FaPalette, FaLayerGroup, FaMapPin, FaHome, FaMapMarkedAlt, FaClock, FaBuilding, FaRoad } from "react-icons/fa";
 import { useConfig } from "@/hooks/useConfig";
@@ -31,6 +32,9 @@ interface SearchResult {
   index?: number;
   geojson?: string;
   geojson_point?: string;
+  /** Second line from the search index, e.g. a structure name or pavement section limits */
+  description?: string | null;
+  assoc_layers?: string | null;
   alias?: string;
   is_open_data?: boolean;
 }
@@ -173,7 +177,7 @@ const Search: React.FC<SearchProps> = ({ onResultSelect, className = "", placeho
       if (selectedTypeValue === "All" || selectedTypeValue === "Tool") {
         if (config?.sidebarToolComponents) {
           const tools = config.sidebarToolComponents
-            .filter((tool) => tool.name.toUpperCase().includes(upperSearch) && (tool.enabled === undefined || tool.enabled))
+            .filter((tool) => tool.name.toUpperCase().includes(upperSearch) && (tool.enabled === undefined || tool.enabled) && !tool.disable)
             .map((tool) => ({
               name: tool.name.replace(/_/g, " "),
               type: "Tool",
@@ -186,7 +190,7 @@ const Search: React.FC<SearchProps> = ({ onResultSelect, className = "", placeho
       if (selectedTypeValue === "All" || selectedTypeValue === "Theme") {
         if (config?.sidebarThemeComponents) {
           const themes = config.sidebarThemeComponents
-            .filter((theme) => theme.name?.toUpperCase().includes(upperSearch) && (theme.enabled === undefined || theme.enabled))
+            .filter((theme) => theme.name?.toUpperCase().includes(upperSearch) && (theme.enabled === undefined || theme.enabled) && !theme.disable)
             .map((theme) => ({
               name: theme.name!.replace(/_/g, " "),
               type: "Theme",
@@ -298,6 +302,35 @@ const Search: React.FC<SearchProps> = ({ onResultSelect, className = "", placeho
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTypes.length, urlParameters.q, urlParameters.qt]); // Minimal dependencies
 
+  // ?LOCATIONID=<id> - the legacy i-Map's shared-location link: zoom straight to that result once
+  // the map's search layer handlers are up
+  const hasProcessedLocationIdRef = useRef(false);
+  useEffect(() => {
+    const entry = Object.entries(urlParameters).find(([key]) => key.toUpperCase() === "LOCATIONID");
+    const locationId = entry?.[1];
+    if (!locationId || hasProcessedLocationIdRef.current) return;
+    hasProcessedLocationIdRef.current = true;
+
+    let attempts = 0;
+    const tryZoom = async () => {
+      const handlers = (window as unknown as Record<string, unknown>).searchZoomHandlers as Record<string, (result: SearchResult) => Promise<void>> | undefined;
+      if (!handlers?.handleLocationResult) {
+        if (++attempts < 60) setTimeout(tryZoom, 500); // map/layers still loading
+        return;
+      }
+      try {
+        const { data } = await axiosInstance.get<SearchResult>(getSearchInfoURL(locationId));
+        if (data?.geojson) {
+          setSearchValue(data.name);
+          await handlers.handleLocationResult(data);
+        }
+      } catch (error) {
+        console.error("Failed to load LOCATIONID result:", error);
+      }
+    };
+    tryZoom();
+  }, [urlParameters]);
+
   // Handle pending search from store (e.g. URL parameter shortcuts)
   const pendingSearch = useSearchStore((s) => s.pendingSearch);
   useEffect(() => {
@@ -399,6 +432,9 @@ const Search: React.FC<SearchProps> = ({ onResultSelect, className = "", placeho
     setSearchValue(result.name);
     setIsOpen(false);
     setHighlightedIndex(-1);
+
+    // Analytics: the result type and query length only, never the search text (legacy parity)
+    trackSearch(result.type || selectedType?.value || "All", searchValue);
 
     // Save to search history
     if (config?.storageKeys?.SearchHistory) {
@@ -578,6 +614,7 @@ const Search: React.FC<SearchProps> = ({ onResultSelect, className = "", placeho
     return {
       type,
       subtitle: type === "" ? result.type : `${type} (${result.type})`,
+      description: result.description || undefined,
     };
   };
 
@@ -783,6 +820,11 @@ const Search: React.FC<SearchProps> = ({ onResultSelect, className = "", placeho
                                   </span>
                                 ))}
                           </div>
+                          {displayInfo.description && (
+                            <div className="text-xs text-base-content/80 truncate mt-0.5" title={displayInfo.description}>
+                              {displayInfo.description}
+                            </div>
+                          )}
                           {displayInfo.subtitle && (
                             <div className="flex items-center gap-1.5 mt-0.5">
                               <span className="text-xs text-base-content/60 truncate max-w-full">{displayInfo.subtitle}</span>

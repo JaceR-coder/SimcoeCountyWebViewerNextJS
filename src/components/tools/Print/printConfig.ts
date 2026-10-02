@@ -303,7 +303,7 @@ export const printConfig: PrintConfig = {
 
   basemapLayerNames: ["Topographic", "Streets", "Open Street Map", "LIO Topo"],
 
-  mapTitle: "County of Simcoe - Web Map",
+  mapTitle: "Ministry of Transportation - iMAPS",
 
   termsOfUse:
     "This map, either in whole or in part, may not be reproduced without the written authority from© The Corporation of the County of Simcoe.  This map is intended for personal use, has been produced using data from a variety of sources and may not be current or accurate.  Produced (in part) under license from: © His Majesty the King in Right of Canada, Department of Natural Resources: © King's Printer, Ontario Ministry of Natural Resources: © Teranet Enterprises Inc. and its suppliers: © Members of the Ontario Geospatial Data Exchange.  All rights reserved. THIS IS NOT A PLAN OF SURVEY.",

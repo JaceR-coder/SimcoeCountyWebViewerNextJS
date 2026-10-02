@@ -41,8 +41,14 @@ export function isHostAllowed(host?: string): boolean {
     return false;
   }
 
-  const allowedOrigins = process.env.APP_ALLOWED_ORIGINS?.split(",") || ["localhost"];
-  return allowedOrigins.includes(host);
+  const allowedOrigins = (process.env.APP_ALLOWED_ORIGINS?.split(",") || ["localhost"])
+    .map((origin) => origin.trim().toLowerCase())
+    .filter(Boolean);
+  // The Host header includes the port (e.g. "localhost:3000"); entries may be
+  // listed with or without one, so accept a match on either form.
+  const hostWithPort = host.trim().toLowerCase();
+  const hostname = hostWithPort.replace(/:\d+$/, "");
+  return allowedOrigins.includes(hostWithPort) || allowedOrigins.includes(hostname);
 }
 
 /**

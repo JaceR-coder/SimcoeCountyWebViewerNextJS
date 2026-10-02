@@ -36,11 +36,23 @@ vi.mock("@/components/myMaps/MyMapsItem", () => ({
 // Mock store
 const mockMyMapsStore = {
   items: [] as MyMapsItem[],
+  folders: [] as { id: string; label: string; panelOpen?: boolean }[],
+  activeFolderId: null as string | null,
+  createFolder: vi.fn(),
+  setActiveFolder: vi.fn(),
+  moveItemToFolder: vi.fn(),
 };
 
+// Behaves like a zustand hook: applies a selector when given one, and exposes getState()
 vi.mock("@/stores/myMapsStore", () => ({
-  useMyMapsStore: vi.fn(() => mockMyMapsStore),
+  useMyMapsStore: Object.assign(
+    vi.fn((selector?: (s: typeof mockMyMapsStore) => unknown) => (selector ? selector(mockMyMapsStore) : mockMyMapsStore)),
+    { getState: () => mockMyMapsStore },
+  ),
 }));
+
+// Folders are covered in MyMapsFolders.test.tsx
+vi.mock("@/components/myMaps/MyMapsFolder", () => ({ default: () => null }));
 
 describe("MyMapsItems Component", () => {
   const user = userEvent.setup();

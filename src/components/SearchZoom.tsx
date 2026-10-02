@@ -21,6 +21,8 @@ import { useToastStore } from "@/hooks/useToast";
 import { activateTab } from "@/utils/helpersUI";
 import { InteractionManager } from "@/utils/openlayers/InteractionManager";
 import { createIdentifyResult, type IdentifyResult } from "@/components/ResultsPopup";
+import { useAppStore } from "@/stores/appStore";
+import { activateSearchResultLayers } from "@/utils/searchLayers";
 
 interface SearchResult {
   name: string;
@@ -31,6 +33,8 @@ interface SearchResult {
   y?: number;
   geojson?: string;
   geojson_point?: string;
+  /** Layers this result's type turns on - see utils/searchLayers.ts */
+  assoc_layers?: string | null;
 }
 
 export const SearchZoom: React.FC = () => {
@@ -338,6 +342,12 @@ export const SearchZoom: React.FC = () => {
         currentSearchFeatureRef.current = { feature: fullFeature, name: result.name };
 
         setLastResult(result);
+
+        // Turn on the layers this kind of result lives in (legacy searchResultLayerActivate,
+        // on unless config sets it false)
+        if (useAppStore.getState().config?.searchResultLayerActivate !== false) {
+          activateSearchResultLayers(result.assoc_layers);
+        }
       } catch (error) {
         console.error("Error handling location result:", error);
       }

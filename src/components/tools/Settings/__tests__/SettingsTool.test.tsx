@@ -198,14 +198,14 @@ describe("SettingsTool", () => {
       render(<SettingsTool onClose={mockOnClose} />);
 
       expect(screen.getByText("Other")).toBeInTheDocument();
-      expect(screen.getByText("GitHub Button")).toBeInTheDocument();
+      expect(screen.getByText("PyGeomatics Button")).toBeInTheDocument();
       expect(screen.getByText("Scale Selector")).toBeInTheDocument();
     });
 
     it("displays correct initial checkbox states for other controls", () => {
       render(<SettingsTool onClose={mockOnClose} />);
 
-      const githubCheckbox = screen.getByRole("checkbox", { name: /GitHub Button/i });
+      const githubCheckbox = screen.getByRole("checkbox", { name: /PyGeomatics Button/i });
       const scaleSelectorCheckbox = screen.getByRole("checkbox", { name: /Scale Selector/i });
 
       expect(githubCheckbox).not.toBeChecked();
